@@ -1,0 +1,69 @@
+---
+title: Operations
+description: How each repository is validated, deployed, and rolled back, and where each part of the CI/CD surface lives.
+---
+
+Each repository deploys independently and validates itself in CI before anything reaches production.
+
+## CI and deployment by repository
+
+| Repository | CI (`ci.yml`) | Deployment |
+| --- | --- | --- |
+| Cookie-Web | Lint, unit tests, build, e2e | Automatic: push to `main` triggers CI and the linked Vercel production deployment |
+| Cookie-Web | — | `migrate.yml` runs `migrations/migrate.sh` automatically when `migrations/**` changes on `main` |
+| Cookie-Web | — | `backfill-embeddings.yml` runs weekly to repair messages whose best-effort embedding call didn't finish |
+| Cookie-Worker | Lint, typecheck, `dry-run --all` for every Worker | Manual: `deploy.yml` is dispatched with one Worker's directory name; it validates the whole repo, dry-runs that Worker again, and publishes only it |
+| Cookie-iOS | Build + `swiftlint --strict` + unit tests | No automated deploy — built and run locally / through Xcode |
+
+:::note
+Cookie-Worker deploys are intentionally manual, one Worker at a time, so a bad change to `data-enricher` can never take down `mail-app-ingest` in the same push.
+:::
+
+## Validation commands
+
+<Tabs>
+  <Tab title="Cookie-Web">
+    ```sh
+    npm run lint
+    npm run test:unit -- --run
+    npm run build
+    npm run test:e2e
+    ```
+  </Tab>
+  <Tab title="Cookie-Worker">
+    ```sh
+    npm run lint
+    npm run types -- --all --check
+    npm run typecheck
+    npm test
+    npm run dry-run -- --all
+    ```
+  </Tab>
+  <Tab title="Cookie-iOS">
+    ```sh
+    xcodebuild -project Cookie.xcodeproj -scheme Cookie \
+      -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' test
+    swiftlint --strict
+    ```
+  </Tab>
+</Tabs>
+
+## Deploying a Worker change
+
+1. Apply any Cookie-Web migration the change depends on first — see [coordinating migrations](/data-model#coordinating-with-cookie-worker).
+2. Confirm the target Worker's Cloudflare bindings (Hyperdrive, email route) and required secrets are already in place.
+3. Run the `Deploy` workflow in GitHub Actions with the Worker's directory name (`mail-app-ingest`, `data-enricher`, or `scheduled-send-flusher`).
+4. Verify in production: for `mail-app-ingest`, send a real message and confirm it's forwarded, a `messages` row and `stored` log event appear, `message_ai.status` reaches `completed`, and spam above the threshold lands in the hidden Spam folder rather than Inbox.
+5. Check Sentry for errors tagged with the Worker's environment.
+
+Cookie-Worker's own `RUNBOOK.md` has the full checklist, including AI-recovery verification, credential rotation, and rollback steps.
+
+## Secrets
+
+Secrets are scoped per repository and, within Cookie-Worker, per Worker — the `Deploy` workflow syncs only the selected Worker's own secrets, so `mail-app-ingest`, `data-enricher`, and `scheduled-send-flusher` never receive each other's credentials. Cross-repository secrets are the shared bearer tokens documented on the [architecture](/architecture#3-scheduled-background-work) and [Cookie-Worker](/components/cookie-worker#configuration-highlights) pages (`SCHEDULED_SEND_FLUSH_TOKEN` / `COOKIE_WEB_FLUSH_TOKEN`, `ENRICHER_TRIGGER_TOKEN` / `HTTP_TRIGGER_TOKEN`) — both sides of each pair must match.
+
+Vercel stores Cookie-Web's production values; GitHub Actions stores only the secrets its own workflows need (migrations, embedding backfills). Cloudflare stores each Worker's secrets, set via `wrangler secret put` from that Worker's own directory.
+
+## Local development safety
+
+Both Cookie-Web and Cookie-Worker call out the same rule: **never point local development or testing at the production database.** Cookie-Web's local API middleware falls back to fixture data when `DATABASE_URL` is unset; Cookie-Worker requires a separate development Supabase project for local Wrangler sessions.

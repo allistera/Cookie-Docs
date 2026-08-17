@@ -1,0 +1,65 @@
+---
+title: Data model
+description: The shared Supabase Postgres schema, migration conventions, and how Cookie-Web and Cookie-Worker stay compatible with it.
+---
+
+Cookie uses one Supabase Postgres database (with pgvector) for everything. The migrations live in the **Cookie-Web** repository under `migrations/`, but **Cookie-Worker** reads and writes the same tables through a Hyperdrive-proxied connection — there is no separate schema or sync process between them.
+
+## Conventions
+
+- Files are ordered SQL, e.g. `0010_ai_enrichment.sql`.
+- Every migration is transactional and **append-only** — never edit an applied migration; add a new file instead.
+- Applied filenames are recorded in `schema_migrations`.
+- Runtime code must stay compatible with the schema until its required migration has actually been applied in each environment.
+
+Apply pending migrations with:
+
+```sh
+export DATABASE_URL='postgres://...'
+./migrations/migrate.sh
+```
+
+The script creates `schema_migrations` if needed and safely skips files already recorded. Pushes to `main` that touch `migrations/**` run the same script automatically via the `Migrate Database` GitHub Actions workflow. Use the Supavisor **session pooler** on port `5432` for GitHub-hosted runs — GitHub runners can't rely on an IPv6-only direct host.
+
+## Schema areas
+
+| Area | Introduced by | Notes |
+| --- | --- | --- |
+| Core mail schema | `0001`–`0009` | Messages, labels, inbound fields, snoozing, sent mail, label descriptions |
+| AI enrichment | `0010`, `0011`, `0015` | Per-label auto-tag settings, model/label provenance, durable `message_ai` pending/failed state, embeddings |
+| Scheduled mail | `0012`, `0032`, `0033`, `0044`, `0046` | Inbound snooze (passive: a due message just becomes visible again) vs. "Send Later" (active: `scheduled_sends` + leases, polled by `scheduled-send-flusher`) |
+| Realtime notifications | `0016` | Short-lived opaque event tokens; Realtime broadcasts only the token, an authenticated function resolves sender/subject |
+| Search | `0017`, `0042`, `0048`, `0049` | Search weighting, trigram indexes, document search and embeddings |
+| Contacts | `0018`, `0019` | Derived contact views for compose suggestions |
+| Tasks & summaries | `0018` (tasks_and_summaries) | Backing store for AI Today |
+| Soft delete & security | `0020`, `0028`, `0039`, `0040` | Soft delete, receipt-capability expiry (90 days), per-user rate-limit counters, Auth0 `sub` hardening |
+| Read receipts | `0021` | Opaque per-message tokens, best-effort open timestamps, server-only table |
+| Calendar | `0022`–`0027`, `0031`, `0041`, `0047` | Events, calendars, recurrence (incl. `BYDAY`), all-day events, calendar subscriptions |
+| Label rules | `0029`, `0030` | Deterministic user-defined tagging, evaluated synchronously by Cookie-Worker inside the storage transaction; `action` lets a rule mark mail done instead of only labeling |
+| Documents | `0036`–`0038`, `0048`, `0049` | Notes/documents, templates, tags, full-text and embedding search |
+| Indexing/perf | `0034`, `0035`, `0043`, `0045` | Query and join index cleanups |
+
+:::note
+This table groups migrations by feature area for orientation. For exact column definitions, read the numbered `.sql` files in `migrations/` — they're the only authoritative source.
+:::
+
+## Read receipts and notifications: privacy by construction
+
+Two features intentionally never expose mailbox content through the token they hand to a client:
+
+- **Read receipts** (`0021`, `0028`): the tracking pixel URL carries an opaque token with no mailbox or message identifier; stored sent HTML excludes the pixel so opening your own sent copy never marks it read. Image blocking can suppress a receipt and security scanners can trigger a false one, so the UI treats status as indicative, not guaranteed. Capabilities expire after 90 days.
+- **Browser notification events** (`0016`): Realtime broadcasts only an opaque event token; an authenticated Vercel function leases and resolves the owned message before the browser ever sees a sender or subject. Unclaimed events are pruned after 24 hours.
+
+## Rate limits
+
+`0039_api_rate_limits.sql` adds server-only, durable per-user counters for AI and enricher requests. Because the counters live in Postgres rather than in-process memory, switching routes or serverless instances can't multiply the effective allowance.
+
+## Coordinating with Cookie-Worker
+
+Because `mail-app-ingest` and `data-enricher` depend on specific tables and columns, several migrations are ordered dependencies for a Worker deploy:
+
+- Apply `0010` before deploying Cookie-Worker code that creates pending enrichment rows during inbound storage.
+- Apply `0029`/`0030` before deploying Cookie-Worker code that reads `label_rules`/`label_rules.action`.
+- Apply `0032` before deploying the `scheduled-send-flusher` Worker — its flush calls would otherwise 404 against an API that doesn't yet recognize `resource=scheduled`/`resource=flush`.
+
+The general rule: **migrate Cookie-Web first, deploy the dependent Cookie-Worker change second.**

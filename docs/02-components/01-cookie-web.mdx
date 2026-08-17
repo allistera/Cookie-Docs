@@ -1,0 +1,103 @@
+---
+title: Cookie-Web
+description: The Vue 3 browser app and its Auth0-protected Vercel API — the front door to Cookie and the owner of the shared database schema.
+---
+
+Cookie-Web is the Vue frontend and the authenticated Vercel functions behind it. It provides inbox browsing, search, labels, AI compose, mailbox Q&A, calendar, documents, and outbound mail — and it owns the [database migrations](/data-model) that Cookie-Worker also depends on. It is deployed at [mail.infinitywave.online](https://mail.infinitywave.online).
+
+## Technology
+
+| Area | Technology |
+| --- | --- |
+| UI | Vue 3, Pinia, Vue Router, Vite |
+| Hosting and API | Vercel Functions |
+| Authentication | Auth0 |
+| Database | Supabase Postgres with pgvector |
+| Realtime | Supabase Realtime broadcast |
+| AI | OpenAI Responses and Embeddings APIs |
+| Outbound email | Resend |
+
+## Layout
+
+<FileTree>
+
+- src/ — Vue application
+  - views/ — routed pages
+  - components/ — presentational and feature components
+  - composables/ — reusable reactive logic (auth, realtime inbox, badges)
+  - stores/ — Pinia stores (inbox, documents)
+  - lib/ — framework-agnostic helpers (HTML sanitizing, scheduling, service worker)
+  - router/ — route table and the auth navigation guard
+- api/ — Vercel Functions (the HTTP API)
+  - \_lib/ — shared server logic (auth, db, retrieval, rate limiting...)
+- migrations/ — append-only SQL, shared with Cookie-Worker
+- e2e/ — Playwright end-to-end tests
+
+</FileTree>
+
+## Frontend routes
+
+Defined in `src/router/index.js`; every route requires Auth0 authentication, enforced both by a template-level gate in `App.vue` and a `router.beforeEach` guard as a structural backstop.
+
+| Path | View | Purpose |
+| --- | --- | --- |
+| `/` | `AIInboxView` | AI Today: gathered to-dos, nightly digest, personalised news |
+| `/inbox` | `TraditionalInboxView` | Classic inbox, label, and folder browsing |
+| `/calendar` | `CalendarView` | Calendar events and subscriptions |
+| `/scheduled` | `ScheduledSendsView` | Pending "Send Later" messages |
+| `/documents/:id?` | `DocumentsView` | Notes/documents editor with templates and tagging |
+| `/settings/:section?` | `SettingsView` | Account, personalisation, and integration settings |
+
+## API surface
+
+Every function under `api/` is an Auth0-protected Vercel Function. Authorization binds the token's verified issuer and immutable `sub` to `users.auth0_sub` — token email claims never select a mailbox. Several endpoints multiplex behavior through a `resource` query parameter rather than exposing separate routes.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/emails` | Keyset-paginated mail lists across inbox, sent, spam, snoozed, and done folders |
+| `GET/POST /api/messages` | Single-message fetch; `resource=contacts` for compose suggestions, `resource=attachment`, `resource=thread-body` |
+| `POST /api/emails` (`resource=state`) | Mutate message state (read, starred, archived, snoozed...) |
+| `GET /api/search` | Keyword and semantic search with filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`) |
+| `POST /api/ask` | Mailbox Q&A with retrieved email sources |
+| `POST /api/compose` | AI draft generation (subject + body); never sends |
+| `POST /api/send` | Outbound delivery via Resend; `resource=scheduled` to queue, `resource=flush` for the Worker cron to claim and send due messages |
+| `GET/POST /api/labels` | Label CRUD, auto-tag settings, and label rules |
+| `GET/POST /api/calendar-events` | Calendar events, recurrence, and subscriptions |
+| `GET/POST /api/tasks` | AI Today data; `resource=refresh` re-triggers `data-enricher`, `resource=interests`/`documents`/`daily-note-seed` manage personalisation inputs |
+| `GET /api/read-receipts` | 1×1 tracking pixel for sent-mail open receipts; always returns the same image |
+| `POST /api/notification-event` | Resolves an opaque Realtime notification token into sender/subject for opt-in browser notifications |
+| `POST /api/summarize` | AI summaries used in the reading view |
+
+## Local development
+
+```sh
+npm install
+npm run dev
+```
+
+Without `DATABASE_URL` set, the local API middleware serves fixture data — no development database is required to work on the UI. Validation before a change is considered done:
+
+```sh
+npm run lint
+npm run test:unit -- --run
+npm run build
+npm run test:e2e
+```
+
+## Key configuration
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Supabase Postgres connection for functions and migrations |
+| `OPENAI_API_KEY` | Embeddings, mailbox Q&A, AI Compose |
+| `RESEND_API_KEY` | Outbound email delivery |
+| `SCHEDULED_SEND_FLUSH_TOKEN` | Bearer secret authorizing `POST /api/send?resource=flush`; shared only with the `scheduled-send-flusher` Worker |
+| `ENRICHER_RUN_URL` / `ENRICHER_TRIGGER_TOKEN` | Let AI Today's manual refresh trigger `data-enricher` on demand |
+| `VITE_AUTH0_*` | Auth0 tenant/client/audience exposed to the browser |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Supabase Realtime (content-free inbox refresh pings) |
+
+The full list, including optional variables, is in the repository's own `README.md`.
+
+:::note
+Pushes to `main` run CI and deploy to Vercel automatically. Changes under `migrations/` also trigger the `Migrate Database` GitHub Actions workflow. See [Data model](/data-model).
+:::

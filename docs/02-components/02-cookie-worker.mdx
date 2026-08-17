@@ -1,0 +1,104 @@
+---
+title: Cookie-Worker
+description: The Cloudflare Workers that ingest inbound mail, run overnight AI enrichment, and flush scheduled sends — deployed independently of Cookie-Web.
+---
+
+Cookie-Worker hosts Cookie's independently deployable Cloudflare Workers. Each Worker owns its source, tests, generated environment types, local secret template, and Wrangler config under `workers/<name>/` — a directory becomes a "Worker capsule" simply by containing a `wrangler.jsonc`, so adding one needs no other registry or CI change. Shared code lives in a root module only once at least two Workers actually use it (see `shared/auth.js`, `shared/fetch.js`, `shared/openai.js`).
+
+## Workers
+
+| Worker | Triggers | Purpose |
+| --- | --- | --- |
+| `mail-app-ingest` | Email, scheduled (15 min) | Parse and store inbound mail, forward the original, enrich the stored copy |
+| `data-enricher` | Scheduled (05:00 UTC daily), manual | Todoist tasks due today, AI analysis of important mail, unread-mail digest, personalised news round-up — feeds Cookie-Web's AI Today page |
+| `scheduled-send-flusher` | Scheduled (every 5 min) | Calls Cookie-Web's `POST /api/send?resource=flush` so "Send Later" mail goes out once due; owns no send logic itself |
+
+```sh
+npm run workers          # list discovered Worker capsules
+npm run dev -- mail-app-ingest
+npm run dev:all          # one Wrangler session, supports service bindings
+npm run deploy -- mail-app-ingest   # production deploys never accept --all
+```
+
+## mail-app-ingest
+
+Cookie's Cloudflare Email Worker — the entry point for every inbound message. Forwarding to the real mailbox is the primary outcome; storage, AI, embedding, and monitoring failures never intentionally block it.
+
+```text
+Cloudflare Email Routing
+  -> parse MIME
+  -> store idempotently through Hyperdrive (+ apply matching tag rules)
+  -> forward original email
+  -> close ingest database client
+  -> waitUntil(AI classification + embedding on a fresh client)
+```
+
+<FileTree>
+
+- src/
+  - worker.js — entry point, orchestrates the flow above
+  - parse.js — MIME parsing
+  - attachments.js — uploads attachment bytes to private Vercel Blob storage
+  - store.js — idempotent storage transaction (by user + RFC Message-ID)
+  - rules.js — user-defined tag rules, applied synchronously in the storage transaction
+  - enrich.js — OpenAI classification (auto-tagging, spam scoring)
+  - embed.js — `text-embedding-3-small` vectors for semantic search
+  - synthetic-id.js — stable IDs for messages without a usable Message-ID
+  - sentry.js — sanitised error reporting (no email or model content)
+
+</FileTree>
+
+Notable behavior:
+
+- Rejects parsing above 10 MiB while still forwarding the original.
+- Only spam scored **≥ 0.98** moves a message into the Spam folder.
+- A 15-minute cron retries stale pending/failed AI work, three messages per run.
+- Transient forwarding errors are re-thrown so the sending server retries; permanent forwarding errors are accepted only once the message is stored safely.
+
+## data-enricher
+
+Runs daily and on demand to populate Cookie-Web's AI Today page.
+
+<FileTree>
+
+- src/
+  - worker.js — entry point; `POST /run`, `?phase=today`, `?phase=digest`
+  - todoist.js — gathers tasks via a remote Todoist **MCP server** (not one Cookie hosts)
+  - analyze.js — AI task-analysis of important/unread email
+  - digest.js — groups unread mail into topics for the nightly digest
+  - news.js / news-sources.js — GitHub, Product Hunt, and BBC UK round-up, ranked against the user's stored interests
+  - store.js — reads/writes the enrichment tables (tasks, digest, news, interests)
+  - mcp.js — MCP **client** helper used to reach the Todoist MCP server over streamable HTTP
+
+</FileTree>
+
+`POST /run?phase=today` rebuilds both AI Today cards and is what Cookie-Web's `POST /api/tasks?resource=refresh` calls; `?phase=digest` rebuilds the mail digest alone. Product Hunt and GitHub tokens are optional — their sections are simply skipped without them, since one daily unauthenticated GitHub search request is well inside the rate limit.
+
+:::note
+`data-enricher` was originally prototyped in Python and rewritten in JavaScript: vendored PyPI packages pushed the bundle past the free-plan size cap, and Python still lacks a Hyperdrive driver.
+:::
+
+## scheduled-send-flusher
+
+The simplest Worker: every 5 minutes it calls `POST /api/send?resource=flush` on Cookie-Web using a shared bearer token (`COOKIE_WEB_FLUSH_TOKEN` here, `SCHEDULED_SEND_FLUSH_TOKEN` on the Cookie-Web side). Cookie-Web owns claiming due `scheduled_sends` rows and calling Resend — this Worker is purely a clock.
+
+## Configuration highlights
+
+| Name | Scope | Purpose |
+| --- | --- | --- |
+| `HYPERDRIVE` | mail-app-ingest | Binding to the Supabase connection |
+| `OWNER_EMAIL` | mail-app-ingest | The exact Cookie-Web user email that owns stored messages |
+| `AI_MODEL` | mail-app-ingest | Structured classification model |
+| `OPENAI_API_KEY` | mail-app-ingest, data-enricher | Classification, embeddings, task analysis |
+| `HTTP_TRIGGER_TOKEN` | data-enricher, scheduled-send-flusher | Shared secret authorizing each Worker's own `POST /run` |
+| `TODOIST_API_TOKEN` | data-enricher | Bearer token for the Todoist MCP server |
+| `PRODUCT_HUNT_TOKEN` / `GITHUB_API_TOKEN` | data-enricher | Optional; enrich the news round-up |
+| `COOKIE_WEB_FLUSH_TOKEN` | scheduled-send-flusher | Must match Cookie-Web's `SCHEDULED_SEND_FLUSH_TOKEN` |
+
+## Deployment
+
+Production deployment is manual via the GitHub Actions `Deploy` workflow, which is dispatched with one Worker's directory name. It validates the whole repository, dry-runs the selected Worker again, and publishes only that Worker — each Worker syncs only its own scoped secrets, so none receives another's credentials.
+
+:::tip
+See the repository's `RUNBOOK.md` for the full deployment checklist, AI-recovery steps, credential rotation, and rollback procedure.
+:::

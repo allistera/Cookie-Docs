@@ -1,0 +1,57 @@
+---
+title: AI features
+description: Every AI capability in Cookie, which component implements it, and the safety boundaries each one keeps.
+---
+
+Cookie's AI features are deliberately narrow: each one assists a specific, familiar task rather than acting autonomously on the user's behalf. The full design rationale lives in Cookie-Web's `docs/AI-CAPABILITIES-REPORT.md`; this page summarizes what's shipped and where each piece runs.
+
+| Capability | Component | Model/API |
+| --- | --- | --- |
+| Auto-tagging | `mail-app-ingest` (Cookie-Worker) | OpenAI structured response |
+| Spam detection | `mail-app-ingest` (Cookie-Worker) | Same structured response as auto-tagging |
+| Semantic search & embeddings | `mail-app-ingest` (write) / `api/search` (read) | `text-embedding-3-small` |
+| Mailbox Q&A | `api/ask` (Cookie-Web) | OpenAI Responses API |
+| AI Compose | `api/compose` (Cookie-Web) | OpenAI Responses API |
+| Reading-view summaries | `api/summarize` (Cookie-Web) | OpenAI Responses API |
+| AI Today: task extraction, digest, news | `data-enricher` (Cookie-Worker) | OpenAI Responses API |
+
+## Auto-tagging and spam detection
+
+Both run inside `mail-app-ingest`'s `waitUntil` enrichment step, as part of one structured OpenAI response per message — spam and label classification share a single model call rather than costing two separate requests over the same private content.
+
+- Each label has an `auto_apply` setting; only enabled labels' names/descriptions are given to the classifier.
+- The model may only return label IDs the application supplied — Cookie-Worker validates IDs and confidence locally before writing anything.
+- Model-applied labels record source, confidence, model, and prompt version. Manual labels survive a re-run of enrichment.
+- Only a spam score **≥ 0.98** moves a message out of Inbox. Spam is a recoverable system label — messages are hidden under **More**, never deleted.
+
+Deterministic **label rules** (`label_rules`, evaluated by `rules.js`) are a separate, non-AI mechanism: subject/body/from/to conditions matched synchronously inside the same storage transaction, with `source = 'rule'` provenance. They run before AI enrichment and have no recovery cron, because they can never leave that transaction.
+
+## Semantic search and mailbox Q&A
+
+`mail-app-ingest` embeds every stored message with `text-embedding-3-small`. `GET /api/search` in Cookie-Web combines keyword and semantic search, with structured filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`). `POST /api/ask` retrieves relevant messages and answers a natural-language question with cited sources — it never fabricates content beyond the retrieved context.
+
+## AI Compose
+
+`POST /api/compose` accepts a user instruction, the current composer state, and an optional owned message ID for reply context — it fetches that context server-side rather than trusting whatever the browser sends. It returns a subject/body draft only:
+
+:::note
+Generation never calls Resend. The user must explicitly review, edit, and send the draft through the normal send path — in both Cookie-Web and Cookie-iOS.
+:::
+
+## AI Today
+
+Built entirely by `data-enricher` and read through `GET /api/tasks`:
+
+- **Gathered tasks** — Todoist tasks due today or overdue (fetched over a remote **Todoist MCP server**, not one Cookie hosts) plus AI-extracted action items from important mail, most-pressing first.
+- **Nightly digest** — unread mail grouped into topics, rebuilt daily at 05:00 UTC.
+- **News round-up** — new GitHub repos and Product Hunt launches ranked against interests stored in `users.prefs` (edited in Settings → Personalisation), plus BBC UK headlines, which are never filtered.
+
+`POST /api/tasks?resource=refresh` calls `data-enricher`'s `POST /run?phase=today` on demand when `ENRICHER_RUN_URL`/`ENRICHER_TRIGGER_TOKEN` are configured; without them, refresh only re-reads the last stored result.
+
+## Safety boundaries
+
+- **Forwarding first**: in `mail-app-ingest`, storage, classification, embedding, and monitoring failures never intentionally block mail delivery.
+- **Server-trusted context**: AI Compose and reply context are fetched server-side, never trusted from the client.
+- **Bounded automation**: nothing sends mail, deletes mail, or leaves Inbox without either an explicit user action or a narrow, auditable threshold (the `0.98` spam score, an `auto_apply` label setting).
+- **Rate limits**: `0039_api_rate_limits.sql` gives AI and enricher requests durable, per-user Postgres counters shared across serverless instances — see [Data model](/data-model#rate-limits).
+- **Sanitised error reporting**: `mail-app-ingest` reports failures to Sentry without email or model content (`sentry.js`).
