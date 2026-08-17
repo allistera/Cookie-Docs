@@ -28,7 +28,7 @@ Deterministic **label rules** (`label_rules`, evaluated by `rules.js`) are a sep
 
 ## Semantic search and mailbox Q&A
 
-`mail-app-ingest` embeds every stored message with `text-embedding-3-small`. `GET /api/search` in Cookie-Web combines keyword and semantic search, with structured filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`). `POST /api/ask` retrieves relevant messages and answers a natural-language question with cited sources — it never fabricates content beyond the retrieved context.
+`mail-app-ingest` embeds every stored message with `text-embedding-3-small`. `GET /api/search` in Cookie-Web combines keyword and semantic search, with structured filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`, `in:`). `POST /api/ask` retrieves relevant messages and answers a natural-language question with cited sources — it never fabricates content beyond the retrieved context.
 
 ## AI Compose
 
