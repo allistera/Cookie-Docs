@@ -1,13 +1,14 @@
 ---
 title: Architecture
-description: How the three Cookie repositories and the Cloudflare, Vercel, Supabase, OpenAI, and Resend services around them fit together.
+description: How the Cookie repositories and the Cloudflare, Vercel, Supabase, OpenAI, and Resend services around them fit together.
 ---
 
-Cookie is split across three repositories that share one database:
+Cookie has three runtime repositories that share one database, plus a documentation repository:
 
 - **Cookie-Web** owns the shared schema (`migrations/` lives there) and serves both the browser app and the Vercel API that Cookie-iOS also calls.
 - **Cookie-Worker** owns everything that runs outside a request/response cycle: inbound mail ingestion, overnight AI enrichment, and a scheduled-send flusher.
 - **Cookie-iOS** is a native client of the Cookie-Web API — it owns no server-side logic or data of its own.
+- **Cookie-Docs** builds this static Blume/MDX site and deploys it to GitHub Pages — it is not on any mail or app request path.
 
 :::note
 Cookie-Web and Cookie-Worker are deployed and versioned independently, but a change to one is not safe in isolation when it touches shared state — see [migration coordination](/data-model#coordinating-with-cookie-worker) in the data model page.
@@ -41,18 +42,70 @@ The overview shows ownership and shared state only. External services appear in 
 
 ### 1. Inbound mail
 
-Cloudflare Email Routing invokes the `mail-app-ingest` Worker on every message addressed to the domain:
+Cloudflare Email Routing invokes the `mail-app-ingest` Worker on every message addressed to the domain. The delivery path and the optional AI work are shown separately so each provider boundary stays readable.
+
+**Delivery and durable storage:**
 
 ```mermaid
 flowchart TB
-    Routing["Cloudflare Email Routing"] --> Ingest["mail-app-ingest"]
-    Ingest --> DB[("Store message<br/>+ apply label rules")]
-    DB --> Forward["Forward original<br/>to mailbox"]
-    Forward --> AI["OpenAI classification<br/>+ embedding in waitUntil"]
-    AI --> DB
+    Sender["Internet sender"]
+
+    subgraph CF["Cloudflare"]
+        direction TB
+        Routing["1 · Email Routing<br/>accepts the SMTP message"]
+        Worker["2 · mail-app-ingest<br/>10 MiB guard + MIME parsing"]
+        Store["4 · Idempotent store<br/>label rules + pending AI row"]
+        Forward["5 · Forward original<br/>delivery remains primary"]
+
+        Routing --> Worker --> Store --> Forward
+    end
+
+    subgraph Vercel["Vercel"]
+        Blob["3 · Private Blob storage<br/>attachment bytes, best effort"]
+    end
+
+    subgraph Supabase["Supabase"]
+        DB[("Postgres + pgvector<br/>messages, threads, attachments,<br/>rules and message_ai")]
+    end
+
+    Mailbox["Destination mailbox"]
+
+    Sender --> Routing
+    Worker -. attachments .-> Blob
+    Store <--> DB
+    Forward --> Mailbox
 ```
 
-Forwarding to the real mailbox is the primary outcome — storage, AI classification, embedding, and monitoring failures never intentionally block delivery. Transient forwarding errors are re-thrown so the sending server retries; permanent forwarding errors are only accepted once the message is stored safely. A 15-minute cron sweeps up to three stale pending/failed AI rows for recovery. See [Cookie-Worker → mail-app-ingest](/components/cookie-worker#mail-app-ingest).
+**Best-effort work after delivery:**
+
+```mermaid
+flowchart LR
+    subgraph CF["Cloudflare"]
+        Delivered["5 · Forward accepted<br/>+ new row stored"]
+        Recovery["15-minute recovery cron"]
+        Enrich["6 · waitUntil enrichment<br/>fresh Hyperdrive client"]
+        Apply["8 · Validate + apply<br/>labels, spam, priority, vector"]
+
+        Delivered --> Enrich
+        Recovery -. retries missing AI work .-> Enrich
+        Enrich --> Apply
+    end
+
+    subgraph OpenAI["OpenAI"]
+        AI["7 · Structured classification<br/>+ 1,536-dimension embedding"]
+    end
+
+    subgraph Supabase["Supabase"]
+        DB[("Postgres + pgvector<br/>accepted AI state")]
+    end
+
+    Enrich <--> AI
+    Apply --> DB
+```
+
+All parsing, orchestration, deterministic label rules, forwarding, and post-delivery policy checks run in the Cloudflare Worker. Supabase holds relational message state through Hyperdrive; Vercel is involved only through private Blob storage for attachment bytes—Vercel Functions are not on the inbound path. OpenAI returns structured classification and embedding results, but Cookie-Worker applies the local thresholds before writing the accepted outcome.
+
+Forwarding to the real mailbox is the primary outcome — storage, attachment upload, AI classification, embedding, and monitoring failures never intentionally block delivery. Transient forwarding errors are re-thrown so the sending server retries; permanent forwarding errors are only accepted once the message is stored safely. A 15-minute cron sweeps up to three stale pending/failed AI rows for recovery, without forwarding the message again. See [Cookie-Worker → mail-app-ingest](/components/cookie-worker#mail-app-ingest).
 
 ### 2. Interactive app traffic
 
@@ -91,7 +144,7 @@ flowchart TB
     API --> Resend[["Resend"]]
 ```
 
-- **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It gathers Todoist tasks, runs AI task analysis over important mail, builds the unread-mail digest, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through `/api/tasks`.
+- **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It gathers Todoist tasks, runs AI task analysis over important mail, triages the last 24 hours of Inbox mail, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through `/api/tasks`.
 - **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /api/send?resource=flush` on Cookie-Web so "Send Later" messages actually go out once due. It owns no mail-sending logic itself — Cookie-Web claims the due rows and calls Resend.
 
 See [Cookie-Worker → data-enricher and scheduled-send-flusher](/components/cookie-worker) for both.

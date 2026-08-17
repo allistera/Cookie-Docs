@@ -1,0 +1,27 @@
+---
+title: Cookie-Docs
+description: The static Blume documentation site that explains the complete Cookie system across repository and provider boundaries.
+---
+
+Cookie-Docs is the documentation component for the whole Cookie system. It owns no application runtime, API, database schema, or user data; its job is to keep the architecture, component responsibilities, data model, AI behavior, and operating procedures understandable in one place.
+
+The site is written in MDX, built with Blume, and uses Mermaid for diagrams that remain versioned with the prose. It is published as a static site at [allistera.github.io/Cookie-Docs](https://allistera.github.io/Cookie-Docs/).
+
+## Source and validation
+
+```text
+docs/                 MDX pages grouped by system concern
+blume.config.ts       site title and GitHub Pages base path
+.github/workflows/    build and GitHub Pages deployment
+```
+
+Run the documentation locally and validate a change with:
+
+```sh
+npm install
+npm run dev
+npm run doctor
+npm run build
+```
+
+`blume doctor` checks the content structure; the production build renders every page, Mermaid diagram, search index, sitemap, machine-readable page, and social image. Pushes to `main` build and deploy the static output to GitHub Pages.

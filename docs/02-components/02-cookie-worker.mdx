@@ -10,7 +10,7 @@ Cookie-Worker hosts Cookie's independently deployable Cloudflare Workers. Each W
 | Worker | Triggers | Purpose |
 | --- | --- | --- |
 | `mail-app-ingest` | Email, scheduled (15 min) | Parse and store inbound mail, forward the original, enrich the stored copy |
-| `data-enricher` | Scheduled (05:00 UTC daily), manual | Todoist tasks due today, AI analysis of important mail, unread-mail digest, personalised news round-up — feeds Cookie-Web's AI Today page |
+| `data-enricher` | Scheduled (05:00 UTC daily), manual | Todoist tasks due today, AI analysis of important mail, recent-inbox triage, personalised news round-up — feeds Cookie-Web's AI Today page |
 | `scheduled-send-flusher` | Scheduled (every 5 min) | Calls Cookie-Web's `POST /api/send?resource=flush` so "Send Later" mail goes out once due; owns no send logic itself |
 
 ```sh
@@ -65,14 +65,14 @@ Runs daily and on demand to populate Cookie-Web's AI Today page.
   - worker.js — entry point; `POST /run`, `?phase=today`, `?phase=digest`
   - todoist.js — gathers tasks via a remote Todoist **MCP server** (not one Cookie hosts)
   - analyze.js — AI task-analysis of important/unread email
-  - digest.js — groups unread mail into topics for the nightly digest
+  - digest.js — applies Reply Needed, Review, and Noise triage to the last 24 hours of Inbox mail
   - news.js / news-sources.js — GitHub, Product Hunt, and BBC UK round-up, ranked against the user's stored interests
   - store.js — reads/writes the enrichment tables (tasks, digest, news, interests)
   - mcp.js — MCP **client** helper used to reach the Todoist MCP server over streamable HTTP
 
 </FileTree>
 
-`POST /run?phase=today` rebuilds both AI Today cards and is what Cookie-Web's `POST /api/tasks?resource=refresh` calls; `?phase=digest` rebuilds the mail digest alone. Product Hunt and GitHub tokens are optional — their sections are simply skipped without them, since one daily unauthenticated GitHub search request is well inside the rate limit.
+`POST /run?phase=today` rebuilds both AI Today cards and is what Cookie-Web's `POST /api/tasks?resource=refresh` calls; the legacy `?phase=digest` name rebuilds inbox triage alone. Triage scans recent mail regardless of read state, shows Reply Needed and Review groups, and stores Noise as category counts only. Its policy is adapted from [Eric Porres's Email Triage Plugin](https://github.com/ericporres/email-triage-plugin); Cookie implements the rules in its existing Worker rather than running the plugin or a Gmail integration. Product Hunt and GitHub tokens are optional — their sections are simply skipped without them, since one daily unauthenticated GitHub search request is well inside the rate limit.
 
 :::note
 `data-enricher` was originally prototyped in Python and rewritten in JavaScript: vendored PyPI packages pushed the bundle past the free-plan size cap, and Python still lacks a Hyperdrive driver.
@@ -88,7 +88,7 @@ The simplest Worker: every 5 minutes it calls `POST /api/send?resource=flush` on
 | --- | --- | --- |
 | `HYPERDRIVE` | mail-app-ingest, data-enricher | Binding to the Supabase connection |
 | `OWNER_EMAIL` | mail-app-ingest, data-enricher | The exact Cookie-Web user email that owns stored messages |
-| `AI_MODEL` | mail-app-ingest, data-enricher | Classification / task-analysis / digest / news-ranking model |
+| `AI_MODEL` | mail-app-ingest, data-enricher | Classification / task-analysis / triage / news-ranking model |
 | `OPENAI_API_KEY` | mail-app-ingest, data-enricher | Classification, embeddings, task analysis |
 | `HTTP_TRIGGER_TOKEN` | data-enricher, scheduled-send-flusher | Shared secret authorizing each Worker's own `POST /run` |
 | `TODOIST_API_TOKEN` | data-enricher | Bearer token for the Todoist MCP server |

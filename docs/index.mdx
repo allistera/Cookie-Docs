@@ -3,11 +3,12 @@ title: Introduction
 description: What Cookie is, the repositories that make it up, and where to go next.
 ---
 
-Cookie is a private, AI-assisted email application built as three cooperating codebases that share one Supabase Postgres database:
+Cookie is a private, AI-assisted email application built as three cooperating runtime codebases, with a fourth repository documenting the system:
 
 - **[Cookie-Web](/components/cookie-web)** — the Vue 3 browser app and its Auth0-protected Vercel API functions. The production app runs at [mail.infinitywave.online](https://mail.infinitywave.online).
 - **[Cookie-Worker](/components/cookie-worker)** — independently deployable Cloudflare Workers that ingest inbound mail, run overnight AI enrichment, and flush scheduled sends.
 - **[Cookie-iOS](/components/cookie-ios)** — a native SwiftUI client ("Cards & Stacks" design) that talks to the same Cookie-Web API as the browser app.
+- **[Cookie-Docs](/components/cookie-docs)** — this Blume/MDX site, deployed to GitHub Pages; it documents the system but owns no runtime or user data.
 
 :::note
 This site documents the system as a whole. Each component also carries its own `README.md` (and, for Cookie-Worker, a `RUNBOOK.md`) in its repository — those are the authoritative source for exact commands and configuration values.
@@ -33,7 +34,7 @@ This site documents the system as a whole. Each component also carries its own `
     How mail, AI enrichment, and the apps fit together end to end.
   </Card>
   <Card title="Components" href="/components/cookie-web" icon="layout-grid">
-    Cookie-Web, Cookie-Worker, and Cookie-iOS in detail.
+    Cookie-Web, Cookie-Worker, Cookie-iOS, and Cookie-Docs in detail.
   </Card>
   <Card title="Data model" href="/data-model" icon="database">
     The shared Postgres schema and migration conventions.
