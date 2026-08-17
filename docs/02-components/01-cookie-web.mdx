@@ -55,12 +55,12 @@ Every function under `api/` is an Auth0-protected Vercel Function. Authorization
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/emails` | Keyset-paginated mail lists across inbox, sent, spam, snoozed, and done folders |
-| `GET/POST /api/messages` | Single-message fetch; `resource=contacts` for compose suggestions, `resource=attachment`, `resource=thread-body` |
-| `POST /api/emails` (`resource=state`) | Mutate message state (read, starred, archived, snoozed...) |
-| `GET /api/search` | Keyword and semantic search with filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`) |
+| `GET/POST/PATCH /api/messages` | Single-message fetch; `PATCH` mutates state (`is_unread`, `is_starred`, `is_archived`, `is_deleted`, `scheduled_for`) on an owned message; `resource=contacts` for compose suggestions, `resource=attachment`, `resource=thread-body` |
+| `GET /api/emails` (`resource=state`) | Lightweight bootstrap: unread count and `userId` for the badge and Realtime channel identity, without loading the mailbox list |
+| `GET /api/search` | Keyword and semantic search with filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`, `in:`) |
 | `POST /api/ask` | Mailbox Q&A with retrieved email sources |
 | `POST /api/compose` | AI draft generation (subject + body); never sends |
-| `POST /api/send` | Outbound delivery via Resend; `resource=scheduled` to queue, `resource=flush` for the Worker cron to claim and send due messages |
+| `POST /api/send` | Outbound delivery via Resend; a `sendAt` field queues it as a scheduled send instead; `GET/DELETE /api/send?resource=scheduled` lists/cancels the caller's pending scheduled sends; `resource=flush` (POST) is for the Worker cron to claim and send due messages |
 | `GET/POST /api/labels` | Label CRUD, auto-tag settings, and label rules |
 | `GET/POST /api/calendar-events` | Calendar events, recurrence, and subscriptions |
 | `GET/POST /api/tasks` | AI Today data; `resource=refresh` re-triggers `data-enricher`, `resource=interests`/`documents`/`daily-note-seed` manage personalisation inputs |
