@@ -13,7 +13,7 @@ Cookie's AI features are deliberately narrow: each one assists a specific, famil
 | Mailbox Q&A | `api/ask` (Cookie-Web) | OpenAI Responses API |
 | AI Compose | `api/compose` (Cookie-Web) | OpenAI Responses API |
 | Reading-view summaries | `api/summarize` (Cookie-Web) | OpenAI Responses API |
-| AI Today: task extraction, digest, news | `data-enricher` (Cookie-Worker) | OpenAI Responses API |
+| AI Today: task extraction, inbox triage, news | `data-enricher` (Cookie-Worker) | OpenAI Responses API |
 
 ## What “AI Inbox” means
 
@@ -23,7 +23,7 @@ AI Inbox is Cookie's normal mailbox with assistance layered around it — not a 
 | --- | --- | --- |
 | When mail arrives | Deterministic label rules, AI classification, spam scoring, priority, and an embedding | Labels and Spam placement update; the message becomes available to semantic search |
 | When the user asks | Semantic search, mailbox Q&A, a thread summary, or AI Compose | A result or draft is returned to the authenticated client |
-| Daily or on refresh | AI Today enrichment | Important-email tasks, unread digest, and personalised news are stored for the AI Today page |
+| Daily or on refresh | AI Today enrichment | Important-email tasks, recent-inbox triage, and personalised news are stored for the AI Today page |
 
 ## What happens when mail arrives
 
@@ -117,10 +117,46 @@ Generation never calls Resend. The user must explicitly review, edit, and send t
 Built entirely by `data-enricher` and read through `GET /api/tasks`:
 
 - **Gathered tasks** — Todoist tasks due today or overdue (fetched over a remote **Todoist MCP server**, not one Cookie hosts) plus AI-extracted action items from important mail, most-pressing first.
-- **Nightly digest** — unread mail grouped into topics, rebuilt daily at 05:00 UTC.
+- **Email triage** — recent Inbox mail divided into **Reply Needed**, **Review**, and **Noise**, rebuilt daily at 5 a.m. UTC.
 - **News round-up** — new GitHub repos and Product Hunt launches ranked against interests stored in `users.prefs` (edited in Settings → Personalisation), plus BBC UK headlines, which are never filtered.
 
 `POST /api/tasks?resource=refresh` calls `data-enricher`'s `POST /run?phase=today` on demand when `ENRICHER_RUN_URL`/`ENRICHER_TRIGGER_TOKEN` are configured; without them, refresh only re-reads the last stored result.
+
+### How email triage chooses what to show
+
+Cookie adapts the policy from [Eric Porres's Email Triage Plugin](https://github.com/ericporres/email-triage-plugin). The plugin is a Claude/Gmail workflow, so Cookie does not install or execute it in production. `data-enricher` implements its useful decision rules directly with Cookie's existing OpenAI structured-response and Postgres pipeline.
+
+The candidate scan is intentionally based on time, not unread state. Opening an email is not proof that its request has been dealt with.
+
+```mermaid
+flowchart LR
+    Inbox["Inbox mail<br/>last 24 hours"] --> Filter["Exclude sent, archived,<br/>deleted, spam, snoozed"]
+    Filter --> Bound["Newest 50<br/>snippet up to 400 chars"]
+    Bound --> Triage["Structured AI triage"]
+```
+
+For each candidate the model receives the sender, delivery address, subject, timestamp, and a bounded snippet. The delivery address can reveal an alias or role address; when it does not, the decision falls back to sender and content. Full bodies and threads are not loaded for this background scan.
+
+The model must place every supplied message ID into exactly one tier:
+
+```mermaid
+flowchart LR
+    Email["Recent email"] --> Reply["Reply Needed<br/>question, request, decision,<br/>deadline or urgent action"]
+    Email --> Review["Review<br/>shipping, calendar, document,<br/>travel, receipt or useful news"]
+    Email --> Noise["Noise<br/>marketing, bulk, social,<br/>promotion or automation"]
+
+    Reply --> Show["Show in AI Inbox"]
+    Review --> Show
+    Noise --> Count["Show category counts only"]
+```
+
+- **Reply Needed** shows a one-line summary and a suggested next action.
+- **Review** shows why the message deserves attention even when no reply is needed.
+- **Noise** never becomes an email row. Cookie counts it locally by category and shows only the summary.
+
+Cookie validates the response after the model call. An unknown ID, duplicate ID, or missing candidate rejects the triage run instead of silently hiding mail. The stored record keeps the legacy `daily_digest` kind and `topics` field so Cookie-Worker and Cookie-Web remain safe to deploy in either order; it also records `email-triage-v1` and the policy source for provenance.
+
+Triage is a view, not a mailbox mutation. It never sends, archives, or deletes anything. Cookie-Web rechecks cited message IDs against live mailbox state before rendering and drops messages deleted since the snapshot; clicking **Mark all emails as read** is still an explicit user action.
 
 ## Safety boundaries
 
