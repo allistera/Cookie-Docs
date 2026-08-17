@@ -15,49 +15,27 @@ Cookie-Web and Cookie-Worker are deployed and versioned independently, but a cha
 
 ## System overview
 
+**App requests:**
+
 ```mermaid
-flowchart LR
-    subgraph Clients
-      Web["Cookie-Web<br/>(Vue 3 SPA)"]
-      iOS["Cookie-iOS<br/>(SwiftUI)"]
-    end
-
-    subgraph Vercel["Cookie-Web on Vercel"]
-      API["Auth0-protected<br/>Vercel Functions"]
-    end
-
-    subgraph CF["Cookie-Worker on Cloudflare"]
-      Ingest["mail-app-ingest"]
-      Enricher["data-enricher"]
-      Flusher["scheduled-send-flusher"]
-    end
-
+flowchart TB
+    Clients["Cookie-Web + Cookie-iOS<br/>user interfaces"]
+    API["Cookie-Web API<br/>Vercel Functions"]
     DB[("Supabase Postgres\n+ pgvector")]
-    OpenAI[["OpenAI\nResponses + Embeddings"]]
-    Resend[["Resend"]]
-    Auth0[["Auth0"]]
-    Email["Cloudflare Email Routing"]
 
-    Web -- HTTPS --> API
-    iOS -- HTTPS --> API
-    Web -. login .-> Auth0
-    iOS -. login .-> Auth0
-    API -- verifies token --> Auth0
+    Clients --> API
     API <--> DB
-    API --> OpenAI
-    API --> Resend
-
-    Email --> Ingest
-    Ingest -- store via Hyperdrive --> DB
-    Ingest -. classify + embed .-> OpenAI
-    Ingest -- forward original --> Email
-
-    Enricher --> DB
-    Enricher --> OpenAI
-    Enricher -. Todoist MCP .-> Todoist[["Todoist"]]
-
-    Flusher -- "POST /api/send?resource=flush" --> API
 ```
+
+**Worker processing:**
+
+```mermaid
+flowchart TB
+    Triggers["Inbound email + cron triggers"] --> Worker["Cookie-Worker<br/>Cloudflare"]
+    Worker <--> DB[("Supabase Postgres<br/>+ pgvector")]
+```
+
+The overview shows ownership and shared state only. External services appear in the focused flows below, where their role is easier to follow.
 
 ## Three request flows
 
@@ -65,13 +43,13 @@ flowchart LR
 
 Cloudflare Email Routing invokes the `mail-app-ingest` Worker on every message addressed to the domain:
 
-```text
-Cloudflare Email Routing
-  -> parse MIME
-  -> store idempotently through Hyperdrive (+ apply matching label rules)
-  -> forward original email
-  -> close ingest database client
-  -> waitUntil(AI classification + embedding on a fresh client)
+```mermaid
+flowchart TB
+    Routing["Cloudflare Email Routing"] --> Ingest["mail-app-ingest"]
+    Ingest --> DB[("Store message<br/>+ apply label rules")]
+    DB --> Forward["Forward original<br/>to mailbox"]
+    Forward --> AI["OpenAI classification<br/>+ embedding in waitUntil"]
+    AI --> DB
 ```
 
 Forwarding to the real mailbox is the primary outcome — storage, AI classification, embedding, and monitoring failures never intentionally block delivery. Transient forwarding errors are re-thrown so the sending server retries; permanent forwarding errors are only accepted once the message is stored safely. A 15-minute cron sweeps up to three stale pending/failed AI rows for recovery. See [Cookie-Worker → mail-app-ingest](/components/cookie-worker#mail-app-ingest).
@@ -80,12 +58,13 @@ Forwarding to the real mailbox is the primary outcome — storage, AI classifica
 
 The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0 and call the same Vercel functions in Cookie-Web:
 
-```text
-Vue 3 / SwiftUI client
-  -> Auth0-protected Vercel Function (api/*.js)
-       -> Supabase Postgres + pgvector (inbox, labels, search, calendar, documents...)
-       -> OpenAI Responses/Embeddings APIs (search, ask, compose)
-       -> Resend (outbound send)
+```mermaid
+flowchart TB
+    Login["Cookie-Web or Cookie-iOS<br/>logs in with Auth0"]
+    API["Cookie-Web API<br/>verifies the bearer token"]
+    Services["Supabase · data and search<br/>OpenAI · AI features<br/>Resend · outbound mail"]
+
+    Login --> API --> Services
 ```
 
 Every function binds the verified Auth0 issuer + immutable `sub` to `users.auth0_sub` — token email claims never select a mailbox. See [Cookie-Web](/components/cookie-web).
@@ -93,6 +72,24 @@ Every function binds the verified Auth0 issuer + immutable `sub` to `users.auth0
 ### 3. Scheduled background work
 
 Two Cloudflare cron triggers drive work that has no human waiting on a response:
+
+**Daily enrichment:**
+
+```mermaid
+flowchart TB
+    Inputs["05:00 UTC cron<br/>+ Todoist MCP"] --> Enricher["data-enricher"]
+    Enricher --> Outputs["OpenAI analysis<br/>+ Supabase results"]
+```
+
+**Scheduled sending:**
+
+```mermaid
+flowchart TB
+    Cron["5-minute cron"] --> Flusher["scheduled-send-flusher"]
+    Flusher --> API["Cookie-Web<br/>send API"]
+    API --> DB[("Supabase Postgres")]
+    API --> Resend[["Resend"]]
+```
 
 - **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It gathers Todoist tasks, runs AI task analysis over important mail, builds the unread-mail digest, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through `/api/tasks`.
 - **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /api/send?resource=flush` on Cookie-Web so "Send Later" messages actually go out once due. It owns no mail-sending logic itself — Cookie-Web claims the due rows and calls Resend.
