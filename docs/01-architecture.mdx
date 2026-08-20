@@ -38,6 +38,31 @@ flowchart TB
 
 The overview shows ownership and shared state only. External services appear in the focused flows below, where their role is easier to follow.
 
+## What runs where
+
+Cookie's server-side code is split across two providers. The split is historical
+rather than principled: everything began as Vercel Functions, and the routes
+that needed Cloudflare's edge — or that were being rewritten anyway — moved to
+Workers one at a time. Both halves talk to the same Supabase database.
+
+| Runtime | Provider | What it serves |
+| --- | --- | --- |
+| Static SPA + 9 Functions | **Vercel** | `mail.infinitywave.online` — the Vue app, plus `api/`: `emails`, `search`, `ask`, `compose`, `send`, `summarize`, `calendar-events`, `read-receipts`, `notification-event` |
+| Private Blob storage | **Vercel** | Attachment bytes written by `mail-app-ingest` |
+| `cookie-web-labels` | **Cloudflare** | `labels-api.infinitywave.online` — labels and label rules |
+| `cookie-web-messages` | **Cloudflare** | `messages-api.infinitywave.online` — single-message read/state/unsubscribe, attachments, contacts |
+| `cookie-web-tasks` | **Cloudflare** | `tasks-api.infinitywave.online` — AI Today cards and the Documents store |
+| `mail-app-ingest` | **Cloudflare** | Email Worker on inbound mail (+ a 15-minute recovery cron) |
+| `data-enricher` | **Cloudflare** | Cron at 05:00 UTC, plus on-demand `POST /run` |
+| `scheduled-send-flusher` | **Cloudflare** | Cron every 5 minutes |
+
+:::note
+The three `cookie-web-*` Workers used to be Vercel Functions (`api/labels.js`,
+`api/messages.js`, `api/tasks.js`). The paths kept their names through the move,
+so `/messages` on the Worker is the same endpoint the SPA has always called —
+only the origin changed. Anything still under `api/` in Cookie-Web is Vercel.
+:::
+
 ## Three request flows
 
 ### 1. Inbound mail
@@ -109,22 +134,33 @@ Forwarding to the real mailbox is the primary outcome — storage, attachment up
 
 ### 2. Interactive app traffic
 
-The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0 and call the same Vercel functions in Cookie-Web:
+The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0, then call two sets of endpoints with the same bearer token — Cookie-Web's Vercel functions, and three Cloudflare Workers the browser reaches cross-origin:
 
 ```mermaid
 flowchart TB
     Login["Cookie-Web or Cookie-iOS<br/>logs in with Auth0"]
-    API["Cookie-Web API<br/>verifies the bearer token"]
+
+    subgraph Vercel["Vercel"]
+        API["Cookie-Web API<br/>emails, search, ask, compose,<br/>send, summarize, calendar"]
+    end
+
+    subgraph CF["Cloudflare"]
+        Workers["cookie-web-labels<br/>cookie-web-messages<br/>cookie-web-tasks"]
+    end
+
     Services["Supabase · data and search<br/>OpenAI · AI features<br/>Resend · outbound mail"]
 
-    Login --> API --> Services
+    Login --> API
+    Login -- "CORS, custom domains" --> Workers
+    API --> Services
+    Workers --> Services
 ```
 
-Every function binds the verified Auth0 issuer + immutable `sub` to `users.auth0_sub` — token email claims never select a mailbox. See [Cookie-Web](/components/cookie-web).
+Both halves verify the token the same way: the verified Auth0 issuer + immutable `sub` bind to `users.auth0_sub`, and token email claims never select a mailbox. The difference is only that the Workers are a cross-origin hop, so they also run a CORS allowlist and Cookie-Web's CSP must permit `https://*.infinitywave.online` in `connect-src`. See [Cookie-Web](/components/cookie-web) and [Cookie-Worker → Cookie Web API Workers](/components/cookie-worker#cookie-web-api-workers).
 
 ### 3. Scheduled background work
 
-Two Cloudflare cron triggers drive work that has no human waiting on a response:
+Cloudflare cron triggers drive the work that has no human waiting on a response. Two of them do the work below; a third, `mail-app-ingest`'s 15-minute sweep, retries stale AI enrichment and is covered in the inbound-mail flow above.
 
 **Daily enrichment:**
 
@@ -144,7 +180,7 @@ flowchart TB
     API --> Resend[["Resend"]]
 ```
 
-- **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It gathers Todoist tasks, runs AI task analysis over important mail, triages the last 24 hours of Inbox mail, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through `/api/tasks`.
+- **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It gathers Todoist tasks, runs AI task analysis over important mail, triages the last 24 hours of Inbox mail, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through the `cookie-web-tasks` Worker.
 - **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /api/send?resource=flush` on Cookie-Web so "Send Later" messages actually go out once due. It owns no mail-sending logic itself — Cookie-Web claims the due rows and calls Resend.
 
 See [Cookie-Worker → data-enricher and scheduled-send-flusher](/components/cookie-worker) for both.

@@ -1,17 +1,24 @@
 ---
 title: Cookie-Worker
-description: The Cloudflare Workers that ingest inbound mail, run overnight AI enrichment, and flush scheduled sends — deployed independently of Cookie-Web.
+description: The six Cloudflare Workers — three that serve Cookie-Web's browser API, and three that ingest inbound mail, run overnight AI enrichment, and flush scheduled sends.
 ---
 
 Cookie-Worker hosts Cookie's independently deployable Cloudflare Workers. Each Worker owns its source, tests, generated environment types, local secret template, and Wrangler config under `workers/<name>/` — a directory becomes a "Worker capsule" simply by containing a `wrangler.jsonc`, so adding one needs no other registry or CI change. Shared code lives in a root module only once at least two Workers actually use it (see `shared/auth.js`, `shared/fetch.js`, `shared/openai.js`).
 
 ## Workers
 
-| Worker | Triggers | Purpose |
-| --- | --- | --- |
-| `mail-app-ingest` | Email, scheduled (15 min) | Parse and store inbound mail, forward the original, enrich the stored copy |
-| `data-enricher` | Scheduled (05:00 UTC daily), manual | Todoist tasks due today, AI analysis of important mail, recent-inbox triage, personalised news round-up — feeds Cookie-Web's AI Today page |
-| `scheduled-send-flusher` | Scheduled (every 5 min) | Calls Cookie-Web's `POST /api/send?resource=flush` so "Send Later" mail goes out once due; owns no send logic itself |
+Six Workers run here, in two groups. The first three answer HTTP requests made
+directly by Cookie-Web's browser app and each hold a custom domain; the last
+three have no public URL and are driven by inbound email or cron.
+
+| Worker | Trigger | Public domain | Purpose |
+| --- | --- | --- | --- |
+| `cookie-web-labels` | HTTP (browser) | `labels-api.infinitywave.online` | Label and label-rule CRUD — `GET/POST/PATCH/DELETE /labels` and `/labels/rules` |
+| `cookie-web-messages` | HTTP (browser) | `messages-api.infinitywave.online` | Single-message read, state changes, and unsubscribe — `GET/POST/PATCH /messages`, plus `/messages/attachment`, `/messages/thread-body`, `/messages/contacts` |
+| `cookie-web-tasks` | HTTP (browser) | `tasks-api.infinitywave.online` | AI Today cards and the Documents store — `GET/POST /tasks` with `/tasks/refresh`, `/tasks/interests`, `/tasks/daily-note-seed`, `/tasks/image-upload`, plus `/documents` |
+| `mail-app-ingest` | Email, scheduled (15 min) | — | Parse and store inbound mail, forward the original, enrich the stored copy |
+| `data-enricher` | Scheduled (05:00 UTC daily), manual | — | Todoist tasks due today, AI analysis of important mail, recent-inbox triage, personalised news round-up — feeds Cookie-Web's AI Today page |
+| `scheduled-send-flusher` | Scheduled (every 5 min) | — | Calls Cookie-Web's `POST /api/send?resource=flush` so "Send Later" mail goes out once due; owns no send logic itself |
 
 ```sh
 npm run workers          # list discovered Worker capsules
@@ -19,6 +26,39 @@ npm run dev -- mail-app-ingest
 npm run dev:all          # one Wrangler session, supports service bindings
 npm run deploy -- mail-app-ingest   # production deploys never accept --all
 ```
+
+## Cookie Web API Workers
+
+`cookie-web-labels`, `cookie-web-messages`, and `cookie-web-tasks` differ from
+the other three: they are called by a real `fetch()` from user-facing
+JavaScript in the browser, not server-to-server behind a shared token. Each one
+took over a route that used to be a Vercel Function in Cookie-Web
+(`api/labels.js`, `api/messages.js`, `api/tasks.js`), so the endpoint names
+survived the move but the origin changed.
+
+Three consequences follow from being browser-facing, and all three share them:
+
+- **Auth0 access tokens, verified per request.** The same bearer token the
+  Vercel functions take. Authorization binds the verified issuer and immutable
+  `sub` to `users.auth0_sub`; a token's email claim never selects a mailbox.
+- **CORS matters.** Each Worker answers preflight and echoes an allowlisted
+  origin (`shared/cors.js`): the production app, any localhost port, and
+  `*.vercel.app` preview deployments. Cookie-Web's own CSP has to allow the
+  domains in turn — `connect-src` includes `https://*.infinitywave.online`.
+- **Custom domains, not `workers.dev`.** The three domains above are declared
+  in each Worker's `wrangler.jsonc` routes and hard-coded in Cookie-Web's
+  [`src/lib/apiWorkers.js`](https://github.com/allistera/Cookie-Web/blob/main/src/lib/apiWorkers.js).
+  Change one and both sides must move together. Each Worker still answers on its
+  `workers.dev` URL, which is kept for debugging.
+
+All three reach Supabase over the same `HYPERDRIVE` binding the mail Workers
+use — there is no separate database, and no RPC back to Vercel.
+
+:::note
+`cookie-web-tasks` is the largest of the three: besides the AI Today cards it
+owns the whole Documents feature — folders, blocks, tags, image upload, and the
+embedding-backed document search that fuses keyword and vector ranking.
+:::
 
 ## mail-app-ingest
 
@@ -86,7 +126,10 @@ The simplest Worker: every 5 minutes it calls `POST /api/send?resource=flush` on
 
 | Name | Scope | Purpose |
 | --- | --- | --- |
-| `HYPERDRIVE` | mail-app-ingest, data-enricher | Binding to the Supabase connection |
+| `HYPERDRIVE` | all except scheduled-send-flusher | Binding to the Supabase connection |
+| `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | the three `cookie-web-*` Workers | Verify the browser's Auth0 access token |
+| `ALLOWED_ORIGIN` | the three `cookie-web-*` Workers | Production origin added to the CORS allowlist |
+| `ENRICHER_RUN_URL` | cookie-web-tasks | Where `/tasks/refresh` calls `data-enricher` |
 | `OWNER_EMAIL` | mail-app-ingest, data-enricher | The exact Cookie-Web user email that owns stored messages |
 | `AI_MODEL` | mail-app-ingest, data-enricher | Classification / task-analysis / triage / news-ranking model |
 | `OPENAI_API_KEY` | mail-app-ingest, data-enricher | Classification, embeddings, task analysis |

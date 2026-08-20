@@ -10,7 +10,7 @@ Cookie-Web is the Vue frontend and the authenticated Vercel functions behind it.
 | Area | Technology |
 | --- | --- |
 | UI | Vue 3, Pinia, Vue Router, Vite |
-| Hosting and API | Vercel Functions |
+| Hosting and API | Vercel (static SPA + `api/` Functions), with labels, messages, and AI Today/Documents served by Cloudflare Workers |
 | Authentication | Auth0 |
 | Database | Supabase Postgres with pgvector |
 | Realtime | Supabase Realtime broadcast |
@@ -55,18 +55,24 @@ Every function under `api/` is an Auth0-protected Vercel Function. Authorization
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/emails` | Keyset-paginated mail lists across inbox, sent, spam, snoozed, and done folders |
-| `GET/POST/PATCH /api/messages` | Single-message fetch; `PATCH` mutates state (`is_unread`, `is_starred`, `is_archived`, `is_deleted`, `scheduled_for`) on an owned message; `resource=contacts` for compose suggestions, `resource=attachment`, `resource=thread-body` |
 | `GET /api/emails` (`resource=state`) | Lightweight bootstrap: unread count and `userId` for the badge and Realtime channel identity, without loading the mailbox list |
 | `GET /api/search` | Keyword and semantic search with filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`, `in:`) |
 | `POST /api/ask` | Mailbox Q&A with retrieved email sources |
 | `POST /api/compose` | AI draft generation (subject + body); never sends |
 | `POST /api/send` | Outbound delivery via Resend; a `sendAt` field queues it as a scheduled send instead; `GET/DELETE /api/send?resource=scheduled` lists/cancels the caller's pending scheduled sends; `resource=flush` (POST) is for the Worker cron to claim and send due messages |
-| `GET/POST /api/labels` | Label CRUD, auto-tag settings, and label rules |
 | `GET/POST /api/calendar-events` | Calendar events, recurrence, and subscriptions |
-| `GET/POST /api/tasks` | AI Today data; `resource=refresh` re-triggers `data-enricher`, `resource=interests`/`documents`/`daily-note-seed` manage personalisation inputs |
 | `GET /api/read-receipts` | 1×1 tracking pixel for sent-mail open receipts; always returns the same image |
 | `POST /api/notification-event` | Resolves an opaque Realtime notification token into sender/subject for opt-in browser notifications |
 | `POST /api/summarize` | AI summaries used in the reading view |
+
+:::note
+Messages, labels, and AI Today/Documents are **not** in this table any more —
+they left `api/` for Cloudflare Workers (`cookie-web-messages`,
+`cookie-web-labels`, `cookie-web-tasks`) and the browser now calls them
+cross-origin at `messages-api`, `labels-api`, and `tasks-api` on
+`infinitywave.online`. The base URLs live in `src/lib/apiWorkers.js`. See
+[Cookie-Worker → Cookie Web API Workers](/components/cookie-worker#cookie-web-api-workers).
+:::
 
 ## Local development
 
