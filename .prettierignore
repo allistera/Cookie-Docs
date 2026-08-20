@@ -1,0 +1,7 @@
+node_modules
+dist
+package-lock.json
+# Prettier's MDX parser predates MDX v3: it collapses fenced code blocks
+# nested inside JSX components (<Tabs>/<Tab>) onto one line, which breaks
+# the build and loses the commands. Blume owns these files.
+*.mdx

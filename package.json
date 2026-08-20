@@ -5,9 +5,14 @@
   "scripts": {
     "dev": "blume dev",
     "build": "blume build",
-    "doctor": "blume doctor"
+    "doctor": "blume doctor",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "blume": "^1.5.1"
+  },
+  "devDependencies": {
+    "prettier": "3.9.6"
   }
 }
