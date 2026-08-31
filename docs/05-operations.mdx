@@ -11,8 +11,9 @@ Each repository deploys independently and validates itself in CI before anything
 | --- | --- | --- |
 | Cookie-Web | Lint, unit tests, build, e2e | Automatic: push to `main` triggers CI and the linked Vercel production deployment |
 | Cookie-Web | — | `migrate.yml` runs `migrations/migrate.sh` automatically when `migrations/**` changes on `main` |
-| Cookie-Web | — | `backfill-embeddings.yml` runs weekly to repair messages whose best-effort embedding call didn't finish |
 | Cookie-Worker | Lint, typecheck, `dry-run --all` for every Worker | Manual: `deploy.yml` is dispatched with one Worker's directory name; it validates the whole repo, dry-runs that Worker again, and publishes only it |
+| Cookie-Worker | — | `search-reindex.yml` — manual, full reindex of Meilisearch via `scripts/reindex-meili.js` |
+| Cookie-Worker | — | `search-drift-repair.yml` — repairs rows whose `search_indexed_at` has fallen behind Meilisearch, via `scripts/repair-search-drift.js` |
 | Cookie-iOS | Build + `swiftlint --strict` + unit tests | No automated deploy — built and run locally / through Xcode |
 
 :::note
@@ -62,7 +63,7 @@ Cookie-Worker's own `RUNBOOK.md` has the full checklist, including AI-recovery v
 
 Secrets are scoped per repository and, within Cookie-Worker, per Worker — the `Deploy` workflow syncs only the selected Worker's own secrets, so `mail-app-ingest`, `data-enricher`, and `scheduled-send-flusher` never receive each other's credentials. Cross-repository secrets are the shared bearer tokens documented on the [architecture](/architecture#3-scheduled-background-work) and [Cookie-Worker](/components/cookie-worker#configuration-highlights) pages (`SCHEDULED_SEND_FLUSH_TOKEN` / `COOKIE_WEB_FLUSH_TOKEN`, `ENRICHER_TRIGGER_TOKEN` / `HTTP_TRIGGER_TOKEN`) — both sides of each pair must match.
 
-Vercel stores Cookie-Web's production values; GitHub Actions stores only the secrets its own workflows need (migrations, embedding backfills). Cloudflare stores each Worker's secrets, set via `wrangler secret put` from that Worker's own directory.
+Vercel stores Cookie-Web's production values; GitHub Actions stores only the secrets its own workflows need — migrations, plus an `OPENAI_API_KEY` scoped to `/v1/embeddings` that `search-reindex.yml` hands to Meilisearch as its embedder credential. Cloudflare stores each Worker's secrets, set via `wrangler secret put` from that Worker's own directory; a deployed Worker's own `OPENAI_API_KEY` only needs `/v1/responses` — no Worker calls `/v1/embeddings` at runtime.
 
 ## Local development safety
 

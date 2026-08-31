@@ -22,8 +22,9 @@ This site documents the system as a whole. Each component also carries its own `
 | Frontend | Vue 3 (web), SwiftUI (iOS) |
 | API | Vercel Functions (Node, Auth0-protected) |
 | Background processing | Cloudflare Workers |
-| Database | Supabase Postgres + pgvector, shared by Web and Worker |
-| AI | OpenAI Responses API, Embeddings API (`text-embedding-3-small`) |
+| Database | Supabase Postgres, shared by Web and Worker |
+| Search | Meilisearch Cloud hybrid search (`messages`, `documents` indexes) |
+| AI | OpenAI Responses API |
 | Outbound email | Resend |
 | Authentication | Auth0 |
 

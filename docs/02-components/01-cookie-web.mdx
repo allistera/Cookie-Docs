@@ -12,9 +12,9 @@ Cookie-Web is the Vue frontend and the authenticated Vercel functions behind it.
 | UI | Vue 3, Pinia, Vue Router, Vite |
 | Hosting and API | Vercel (static SPA + `api/` Functions), with labels, messages, and AI Today/Documents served by Cloudflare Workers |
 | Authentication | Auth0 |
-| Database | Supabase Postgres with pgvector |
+| Database | Supabase Postgres |
 | Realtime | Supabase Realtime broadcast |
-| AI | OpenAI Responses and Embeddings APIs |
+| AI | OpenAI Responses API |
 | Outbound email | Resend |
 
 ## Layout
@@ -56,8 +56,6 @@ Every function under `api/` is an Auth0-protected Vercel Function. Authorization
 | --- | --- |
 | `GET /api/emails` | Keyset-paginated mail lists across inbox, sent, spam, snoozed, and done folders |
 | `GET /api/emails` (`resource=state`) | Lightweight bootstrap: unread count and `userId` for the badge and Realtime channel identity, without loading the mailbox list |
-| `GET /api/search` | Keyword and semantic search with filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`, `in:`) |
-| `POST /api/ask` | Mailbox Q&A with retrieved email sources |
 | `POST /api/compose` | AI draft generation (subject + body); never sends |
 | `POST /api/send` | Outbound delivery via Resend; a `sendAt` field queues it as a scheduled send instead; `GET/DELETE /api/send?resource=scheduled` lists/cancels the caller's pending scheduled sends; `resource=flush` (POST) is for the Worker cron to claim and send due messages |
 | `GET/POST /api/calendar-events` | Calendar events, recurrence, and subscriptions |
@@ -66,11 +64,13 @@ Every function under `api/` is an Auth0-protected Vercel Function. Authorization
 | `POST /api/summarize` | AI summaries used in the reading view |
 
 :::note
-Messages, labels, and AI Today/Documents are **not** in this table any more —
-they left `api/` for Cloudflare Workers (`cookie-web-messages`,
-`cookie-web-labels`, `cookie-web-tasks`) and the browser now calls them
-cross-origin at `messages-api`, `labels-api`, and `tasks-api` on
-`infinitywave.online`. The base URLs live in `src/lib/apiWorkers.js`. See
+Messages, labels, AI Today/Documents, search, and mailbox Q&A are **not** in
+this table any more — they left `api/` for Cloudflare Workers
+(`cookie-web-messages`, `cookie-web-labels`, `cookie-web-tasks`, `cookie-web-search`)
+and the browser now calls them cross-origin at `messages-api`, `labels-api`,
+`tasks-api`, and `search-api` on `infinitywave.online`. Search runs as
+`GET /search` and mailbox Q&A as `POST /ask`, both backed by Meilisearch
+hybrid search. The base URLs live in `src/lib/apiWorkers.js`. See
 [Cookie-Worker → Cookie Web API Workers](/components/cookie-worker#cookie-web-api-workers).
 :::
 
@@ -95,7 +95,7 @@ npm run test:e2e
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | Supabase Postgres connection for functions and migrations |
-| `OPENAI_API_KEY` | Embeddings, mailbox Q&A, AI Compose |
+| `OPENAI_API_KEY` | AI Compose, reading-view summaries (`/v1/responses` only) |
 | `RESEND_API_KEY` | Outbound email delivery |
 | `SCHEDULED_SEND_FLUSH_TOKEN` | Bearer secret authorizing `POST /api/send?resource=flush`; shared only with the `scheduled-send-flusher` Worker |
 | `ENRICHER_RUN_URL` / `ENRICHER_TRIGGER_TOKEN` | Let AI Today's manual refresh trigger `data-enricher` on demand |

@@ -22,7 +22,7 @@ Cookie-Web and Cookie-Worker are deployed and versioned independently, but a cha
 flowchart TB
     Clients["Cookie-Web + Cookie-iOS<br/>user interfaces"]
     API["Cookie-Web API<br/>Vercel Functions"]
-    DB[("Supabase Postgres\n+ pgvector")]
+    DB[("Supabase Postgres")]
 
     Clients --> API
     API <--> DB
@@ -33,7 +33,7 @@ flowchart TB
 ```mermaid
 flowchart TB
     Triggers["Inbound email + cron triggers"] --> Worker["Cookie-Worker<br/>Cloudflare"]
-    Worker <--> DB[("Supabase Postgres<br/>+ pgvector")]
+    Worker <--> DB[("Supabase Postgres")]
 ```
 
 The overview shows ownership and shared state only. External services appear in the focused flows below, where their role is easier to follow.
@@ -47,11 +47,12 @@ Workers one at a time. Both halves talk to the same Supabase database.
 
 | Runtime | Provider | What it serves |
 | --- | --- | --- |
-| Static SPA + 9 Functions | **Vercel** | `mail.infinitywave.online` — the Vue app, plus `api/`: `emails`, `search`, `ask`, `compose`, `send`, `summarize`, `calendar-events`, `read-receipts`, `notification-event` |
+| Static SPA + 7 Functions | **Vercel** | `mail.infinitywave.online` — the Vue app, plus `api/`: `emails`, `compose`, `send`, `summarize`, `calendar-events`, `read-receipts`, `notification-event` |
 | Private Blob storage | **Vercel** | Attachment bytes written by `mail-app-ingest` |
 | `cookie-web-labels` | **Cloudflare** | `labels-api.infinitywave.online` — labels and label rules |
 | `cookie-web-messages` | **Cloudflare** | `messages-api.infinitywave.online` — single-message read/state/unsubscribe, attachments, contacts |
 | `cookie-web-tasks` | **Cloudflare** | `tasks-api.infinitywave.online` — AI Today cards and the Documents store |
+| `cookie-web-search` | **Cloudflare** | `search-api.infinitywave.online` — hybrid search over mail and documents (`GET /search`) and mailbox Q&A (`POST /ask`), both backed by Meilisearch |
 | `mail-app-ingest` | **Cloudflare** | Email Worker on inbound mail (+ a 15-minute recovery cron) |
 | `data-enricher` | **Cloudflare** | Cron at 05:00 UTC, plus on-demand `POST /run` |
 | `scheduled-send-flusher` | **Cloudflare** | Cron every 5 minutes |
@@ -90,7 +91,7 @@ flowchart TB
     end
 
     subgraph Supabase["Supabase"]
-        DB[("Postgres + pgvector<br/>messages, threads, attachments,<br/>rules and message_ai")]
+        DB[("Postgres<br/>messages, threads, attachments,<br/>rules and message_ai")]
     end
 
     Mailbox["Destination mailbox"]
@@ -109,7 +110,7 @@ flowchart LR
         Delivered["5 · Forward accepted<br/>+ new row stored"]
         Recovery["15-minute recovery cron"]
         Enrich["6 · waitUntil enrichment<br/>fresh Hyperdrive client"]
-        Apply["8 · Validate + apply<br/>labels, spam, priority, vector"]
+        Apply["8 · Validate + apply<br/>labels, spam, priority"]
 
         Delivered --> Enrich
         Recovery -. retries missing AI work .-> Enrich
@@ -117,38 +118,38 @@ flowchart LR
     end
 
     subgraph OpenAI["OpenAI"]
-        AI["7 · Structured classification<br/>+ 1,536-dimension embedding"]
+        AI["7 · Structured classification"]
     end
 
     subgraph Supabase["Supabase"]
-        DB[("Postgres + pgvector<br/>accepted AI state")]
+        DB[("Postgres<br/>accepted AI state")]
     end
 
     Enrich <--> AI
     Apply --> DB
 ```
 
-All parsing, orchestration, deterministic label rules, forwarding, and post-delivery policy checks run in the Cloudflare Worker. Supabase holds relational message state through Hyperdrive; Vercel is involved only through private Blob storage for attachment bytes—Vercel Functions are not on the inbound path. OpenAI returns structured classification and embedding results, but Cookie-Worker applies the local thresholds before writing the accepted outcome.
+All parsing, orchestration, deterministic label rules, forwarding, and post-delivery policy checks run in the Cloudflare Worker. Supabase holds relational message state through Hyperdrive; Vercel is involved only through private Blob storage for attachment bytes—Vercel Functions are not on the inbound path. OpenAI returns structured classification results, but Cookie-Worker applies the local thresholds before writing the accepted outcome.
 
-Forwarding to the real mailbox is the primary outcome — storage, attachment upload, AI classification, embedding, and monitoring failures never intentionally block delivery. Transient forwarding errors are re-thrown so the sending server retries; permanent forwarding errors are only accepted once the message is stored safely. A 15-minute cron sweeps up to three stale pending/failed AI rows for recovery, without forwarding the message again. See [Cookie-Worker → mail-app-ingest](/components/cookie-worker#mail-app-ingest).
+Forwarding to the real mailbox is the primary outcome — storage, attachment upload, AI classification, and monitoring failures never intentionally block delivery. Transient forwarding errors are re-thrown so the sending server retries; permanent forwarding errors are only accepted once the message is stored safely. A 15-minute cron sweeps up to three stale pending/failed AI rows for recovery, without forwarding the message again. See [Cookie-Worker → mail-app-ingest](/components/cookie-worker#mail-app-ingest).
 
 ### 2. Interactive app traffic
 
-The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0, then call two sets of endpoints with the same bearer token — Cookie-Web's Vercel functions, and three Cloudflare Workers the browser reaches cross-origin:
+The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0, then call two sets of endpoints with the same bearer token — Cookie-Web's Vercel functions, and four Cloudflare Workers the browser reaches cross-origin:
 
 ```mermaid
 flowchart TB
     Login["Cookie-Web or Cookie-iOS<br/>logs in with Auth0"]
 
     subgraph Vercel["Vercel"]
-        API["Cookie-Web API<br/>emails, search, ask, compose,<br/>send, summarize, calendar"]
+        API["Cookie-Web API<br/>emails, compose,<br/>send, summarize, calendar"]
     end
 
     subgraph CF["Cloudflare"]
-        Workers["cookie-web-labels<br/>cookie-web-messages<br/>cookie-web-tasks"]
+        Workers["cookie-web-labels<br/>cookie-web-messages<br/>cookie-web-tasks<br/>cookie-web-search"]
     end
 
-    Services["Supabase · data and search<br/>OpenAI · AI features<br/>Resend · outbound mail"]
+    Services["Supabase · data<br/>Meilisearch · search<br/>OpenAI · AI features<br/>Resend · outbound mail"]
 
     Login --> API
     Login -- "CORS, custom domains" --> Workers

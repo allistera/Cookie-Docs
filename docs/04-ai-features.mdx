@@ -9,20 +9,20 @@ Cookie's AI features are deliberately narrow: each one assists a specific, famil
 | --- | --- | --- |
 | Auto-tagging | `mail-app-ingest` (Cookie-Worker) | OpenAI structured response |
 | Spam detection | `mail-app-ingest` (Cookie-Worker) | Same structured response as auto-tagging |
-| Semantic search & embeddings | `mail-app-ingest` (write) / `api/search` (read) | `text-embedding-3-small` |
-| Mailbox Q&A | `api/ask` (Cookie-Web) | OpenAI Responses API |
+| Search (mail & documents) | `cookie-web-search` (Cookie-Worker) | Meilisearch hybrid search |
+| Mailbox Q&A | `cookie-web-search` (Cookie-Worker) | OpenAI Responses API |
 | AI Compose | `api/compose` (Cookie-Web) | OpenAI Responses API |
 | Reading-view summaries | `api/summarize` (Cookie-Web) | OpenAI Responses API |
 | AI Today: task extraction, inbox triage, news | `data-enricher` (Cookie-Worker) | OpenAI Responses API |
 
 ## What “AI Inbox” means
 
-AI Inbox is Cookie's normal mailbox with assistance layered around it — not a second mailbox and not an autonomous email agent. New inbound mail is classified and embedded automatically; summaries, mailbox Q&A, and draft generation run only when the user asks for them. Nothing in the AI path replies, sends, or deletes mail by itself.
+AI Inbox is Cookie's normal mailbox with assistance layered around it — not a second mailbox and not an autonomous email agent. New inbound mail is classified automatically; summaries, mailbox Q&A, and draft generation run only when the user asks for them. Nothing in the AI path replies, sends, or deletes mail by itself.
 
 | When | What runs | Result |
 | --- | --- | --- |
-| When mail arrives | Deterministic label rules, AI classification, spam scoring, priority, and an embedding | Labels and Spam placement update; the message becomes available to semantic search |
-| When the user asks | Semantic search, mailbox Q&A, a thread summary, or AI Compose | A result or draft is returned to the authenticated client |
+| When mail arrives | Deterministic label rules, AI classification, spam scoring, and priority | Labels and Spam placement update; the message becomes available to search |
+| When the user asks | Search, mailbox Q&A, a thread summary, or AI Compose | A result or draft is returned to the authenticated client |
 | Daily or on refresh | AI Today enrichment | Important-email tasks, recent-inbox triage, and personalised news are stored for the AI Today page |
 
 ## What happens when mail arrives
@@ -31,8 +31,8 @@ AI Inbox is Cookie's normal mailbox with assistance layered around it — not a 
 flowchart TB
     Routing["Cloudflare Email Routing"] --> Store["Store message + attachments<br/>apply label rules + create pending AI row"]
     Store --> Forward["Forward the original email"]
-    Forward --> Enrich["Classify + embed<br/>best effort"]
-    Enrich --> Inbox["Inbox or Spam placement<br/>labels + priority + search vector"]
+    Forward --> Enrich["Classify<br/>best effort"]
+    Enrich --> Inbox["Inbox or Spam placement<br/>labels + priority"]
 ```
 
 ### 1. Store first, with deterministic rules
@@ -43,9 +43,9 @@ Rules are deliberately separate from AI: they compare `subject`, `body`, `from`,
 
 The original email is then forwarded to the real mailbox. Delivery is the primary outcome: storage, attachment upload, AI, and monitoring failures never intentionally make the model a dependency of forwarding.
 
-### 2. Classify and embed in parallel
+### 2. Classify the message
 
-Best-effort enrichment uses a fresh database client rather than holding the ingest connection open during model latency. Classification and embedding requests run concurrently, but each result is saved independently so one successful result survives if the other request fails.
+Best-effort enrichment uses a fresh database client rather than holding the ingest connection open during model latency. It runs a single classification request, and the result is saved once the model responds.
 
 The classification request contains:
 
@@ -54,8 +54,6 @@ The classification request contains:
 - a system instruction that treats the email as untrusted data, never as instructions.
 
 The OpenAI response is constrained to a strict JSON schema containing candidate label IDs and confidences, a spam verdict/score/reason, and a `low`/`normal`/`high` priority. The default model is `gpt-5.6-luna` (overridable with `AI_MODEL`), and the stored prompt version is `email-enrichment-v2`.
-
-At the same time, Cookie embeds the subject plus up to **8,000 characters** of body with `text-embedding-3-small`, producing the 1,536-dimension vector used by semantic search.
 
 :::note
 Arrival-time enrichment never generates a message summary. Reading-view summaries are a separate, authenticated, user-triggered operation.
@@ -77,12 +75,7 @@ Every completed classification stores the provider, model, prompt version, proce
 
 ### 4. Recover partial failures
 
-The `message_ai` row records `pending`, `completed`, or `failed` state. Every 15 minutes, `mail-app-ingest` selects up to three of the oldest rows that have been stale for at least two minutes and need classification or an embedding.
-
-- If embedding succeeds but classification fails, the vector stays stored and only classification is retried.
-- If classification succeeds but embedding fails, labels, spam state, and priority stay completed; recovery retries only the missing vector.
-- A forbidden embeddings endpoint is recorded as `embedding_forbidden` and is not retried every 15 minutes.
-- Cookie-Web's weekly embedding backfill is a separate final safety net for messages whose vector is still missing.
+The `message_ai` row records `pending`, `completed`, or `failed` state. Every 15 minutes, `mail-app-ingest` selects up to three of the oldest rows that have been stale for at least two minutes and still need classification, and retries it.
 
 Recovery never re-forwards a message and never changes the fact that it was delivered. It only repairs the optional AI layer.
 
@@ -92,11 +85,11 @@ In **Settings → Labels**, the user can enable or disable Auto-tag independentl
 
 Spam is stored, not deleted, and the high threshold deliberately favours false negatives over hiding legitimate newsletters or receipts. There is not yet a **Not spam** feedback action, sender allow-list, or training loop; those are not implied by the AI Inbox label.
 
-## Semantic search and mailbox Q&A
+## Search and mailbox Q&A
 
-`GET /api/search` combines keyword matches with vector similarity using reciprocal-rank fusion. Structured filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`, `in:`) are applied to both legs. If the query embedding cannot be generated, search degrades to keyword/recency results rather than failing the mailbox search.
+`GET /search`, served by the `cookie-web-search` Worker, queries Meilisearch's hybrid ranking directly — Meilisearch blends keyword and semantic matches itself via its `semanticRatio` setting, so Cookie no longer computes embeddings or fuses ranked lists in application code. Structured filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`, `in:`) are applied alongside the query. The type-ahead path (`mode=keyword`) sets `semanticRatio: 0` so it spends no embedding call. Meilisearch is a hard dependency for search: if it is unreachable, search fails rather than degrading to a keyword-only fallback.
 
-`POST /api/ask` embeds the question, retrieves owned mailbox context, and asks the model to answer with cited messages. The retrieval and answer endpoints are Auth0-protected and rate-limited; retrieved message content is loaded server-side rather than accepted from the client.
+`POST /ask`, also served by the `cookie-web-search` Worker, retrieves owned mailbox context from Meilisearch and asks the model to answer with cited messages. The retrieval and answer endpoints are Auth0-protected and rate-limited; retrieved message content is loaded server-side rather than accepted from the client.
 
 ## Reading-view summaries
 
@@ -160,7 +153,7 @@ Triage is a view, not a mailbox mutation. It never sends, archives, or deletes a
 
 ## Safety boundaries
 
-- **Forwarding first**: in `mail-app-ingest`, storage, classification, embedding, and monitoring failures never intentionally block mail delivery.
+- **Forwarding first**: in `mail-app-ingest`, storage, classification, and monitoring failures never intentionally block mail delivery.
 - **Server-trusted context**: AI Compose and reply context are fetched server-side, never trusted from the client.
 - **Bounded automation**: AI never sends or deletes mail. Only a spam verdict at or above `0.98` changes folder placement automatically; each label's `auto_apply` setting independently controls whether AI may apply it.
 - **Rate limits**: `0039_api_rate_limits.sql` gives AI and enricher requests durable, per-user Postgres counters shared across serverless instances — see [Data model](/data-model#rate-limits).
