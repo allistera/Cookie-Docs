@@ -5,3 +5,9 @@ package-lock.json
 # nested inside JSX components (<Tabs>/<Tab>) onto one line, which breaks
 # the build and loses the commands. Blume owns these files.
 *.mdx
+
+# Archify diagram sources and their delivered HTML are validated, frozen
+# artifacts with recorded SHA-256 receipts — reformatting would invalidate
+# the receipts (and Archify owns the HTML's byte layout).
+diagrams/
+public/diagrams/
