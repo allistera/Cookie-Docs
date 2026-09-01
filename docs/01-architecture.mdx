@@ -173,7 +173,7 @@ Cloudflare cron triggers drive the work that has no human waiting on a response.
 
 ```mermaid
 flowchart TB
-    Inputs["05:00 UTC cron<br/>+ Todoist MCP"] --> Enricher["data-enricher"]
+    Inputs["05:00 UTC cron"] --> Enricher["data-enricher"]
     Enricher --> Outputs["OpenAI analysis<br/>+ Supabase results"]
 ```
 
@@ -187,7 +187,7 @@ flowchart TB
     API --> Resend[["Resend"]]
 ```
 
-- **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It gathers Todoist tasks, runs AI task analysis over important mail, triages the last 24 hours of Inbox mail, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through the `cookie-web-tasks` Worker.
+- **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It runs AI task analysis over important mail, triages the last 24 hours of Inbox mail, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through the `cookie-web-tasks` Worker.
 - **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /api/send?resource=flush` on Cookie-Web so "Send Later" messages actually go out once due. It owns no mail-sending logic itself — Cookie-Web claims the due rows and calls Resend.
 
 See [Cookie-Worker → data-enricher and scheduled-send-flusher](/components/cookie-worker) for both.

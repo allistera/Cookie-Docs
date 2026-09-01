@@ -17,7 +17,7 @@ three have no public URL and are driven by inbound email or cron.
 | `cookie-web-messages` | HTTP (browser) | `messages-api.infinitywave.online` | Single-message read, state changes, and unsubscribe — `GET/POST/PATCH /messages`, plus `/messages/attachment`, `/messages/thread-body`, `/messages/contacts` |
 | `cookie-web-tasks` | HTTP (browser) | `tasks-api.infinitywave.online` | AI Today cards and the Documents store — `GET/POST /tasks` with `/tasks/refresh`, `/tasks/interests`, `/tasks/daily-note-seed`, `/tasks/image-upload`, plus `/documents` |
 | `mail-app-ingest` | Email, scheduled (15 min) | — | Parse and store inbound mail, forward the original, enrich the stored copy |
-| `data-enricher` | Scheduled (05:00 UTC daily), manual | — | Todoist tasks due today, AI analysis of important mail, recent-inbox triage, personalised news round-up — feeds Cookie-Web's AI Today page |
+| `data-enricher` | Scheduled (05:00 UTC daily), manual | — | AI analysis of important mail, recent-inbox triage, personalised news round-up — feeds Cookie-Web's AI Today page |
 | `scheduled-send-flusher` | Scheduled (every 5 min) | — | Calls Cookie-Web's `POST /api/send?resource=flush` so "Send Later" mail goes out once due; owns no send logic itself |
 
 ```sh
@@ -105,12 +105,10 @@ Runs daily and on demand to populate Cookie-Web's AI Today page.
 
 - src/
   - worker.js — entry point; `POST /run`, `?phase=today`, `?phase=digest`
-  - todoist.js — gathers tasks via a remote Todoist **MCP server** (not one Cookie hosts)
   - analyze.js — AI task-analysis of important/unread email
   - digest.js — applies Reply Needed, Review, and Noise triage to the last 24 hours of Inbox mail
   - news.js / news-sources.js — GitHub, Product Hunt, and BBC UK round-up, ranked against the user's stored interests
   - store.js — reads/writes the enrichment tables (tasks, digest, news, interests)
-  - mcp.js — MCP **client** helper used to reach the Todoist MCP server over streamable HTTP
 
 </FileTree>
 
@@ -138,7 +136,6 @@ The simplest Worker: every 5 minutes it calls `POST /api/send?resource=flush` on
 | `AI_MODEL` | mail-app-ingest, data-enricher | Classification / task-analysis / triage / news-ranking model |
 | `OPENAI_API_KEY` | mail-app-ingest, data-enricher | Classification, task analysis (`/v1/responses` only — no Worker calls `/v1/embeddings` at runtime) |
 | `HTTP_TRIGGER_TOKEN` | data-enricher, scheduled-send-flusher | Shared secret authorizing each Worker's own `POST /run` |
-| `TODOIST_API_TOKEN` | data-enricher | Bearer token for the Todoist MCP server |
 | `PRODUCT_HUNT_TOKEN` / `GITHUB_API_TOKEN` | data-enricher | Optional; enrich the news round-up |
 | `COOKIE_WEB_FLUSH_TOKEN` | scheduled-send-flusher | Must match Cookie-Web's `SCHEDULED_SEND_FLUSH_TOKEN` |
 

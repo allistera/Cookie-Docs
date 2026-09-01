@@ -109,7 +109,7 @@ Generation never calls Resend. The user must explicitly review, edit, and send t
 
 Built entirely by `data-enricher` and read through `GET /api/tasks`:
 
-- **Gathered tasks** — Todoist tasks due today or overdue (fetched over a remote **Todoist MCP server**, not one Cookie hosts) plus AI-extracted action items from important mail, most-pressing first.
+- **Suggested to-dos** — Cookie's own Tasks due today or overdue (the same `task_items` the Tasks app edits, served by `cookie-web-tasks`) plus AI-extracted action items from important mail, most-pressing first. Completing or rescheduling one here updates it in the Tasks app.
 - **Email triage** — recent Inbox mail divided into **Reply Needed**, **Review**, and **Noise**, rebuilt daily at 5 a.m. UTC.
 - **News round-up** — new GitHub repos and Product Hunt launches ranked against interests stored in `users.prefs` (edited in Settings → Personalisation), plus BBC UK headlines, which are never filtered.
 

@@ -144,7 +144,7 @@
       "col": 1,
       "type": "backend",
       "label": "data-enricher",
-      "sublabel": "Todoist, triage, news",
+      "sublabel": "Analysis, triage, news",
       "brand": "cloudflare",
       "width": 150
     },
@@ -217,7 +217,6 @@
       "dot": "violet",
       "title": "Daily enrichment",
       "items": [
-        "Gathers Todoist tasks over MCP",
         "Triages the last 24 hours of Inbox mail",
         "Results read by AI Today through the cookie-web-tasks Worker"
       ]
