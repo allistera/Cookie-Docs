@@ -1,0 +1,338 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Cookie Inbound Mail Flow",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "delivery",
+        "label": "Delivery path",
+        "focus": [
+          "sender",
+          "routing",
+          "ingest",
+          "store",
+          "forward",
+          "mailbox"
+        ],
+        "note": "Forwarding to the real mailbox is the primary outcome; nothing on this path waits for AI."
+      },
+      {
+        "id": "durable-state",
+        "label": "Durable state",
+        "focus": [
+          "ingest",
+          "store",
+          "blob",
+          "db"
+        ],
+        "note": "The storage transaction applies label rules and creates the pending AI row."
+      },
+      {
+        "id": "best-effort-ai",
+        "label": "Best-effort AI",
+        "focus": [
+          "forward",
+          "enrich",
+          "classify",
+          "recovery",
+          "db"
+        ],
+        "note": "Classification runs after delivery; a 15-minute cron retries stale pending rows."
+      }
+    ],
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "Worker logic"
+        },
+        "messagebus": {
+          "label": "Cron trigger"
+        },
+        "database": {
+          "label": "Postgres"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "internet",
+      "label": "Internet"
+    },
+    {
+      "id": "cloudflare",
+      "label": "Cloudflare · mail-app-ingest"
+    },
+    {
+      "id": "storage",
+      "label": "Durable storage"
+    },
+    {
+      "id": "ai",
+      "label": "Best-effort AI (after delivery)",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "accept",
+      "label": "Accept + parse",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "store-forward",
+      "label": "Store, then forward",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "after-delivery",
+      "label": "After delivery",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "sender",
+    "routing",
+    "ingest",
+    "store",
+    "forward",
+    "mailbox"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "sender",
+      "recovery"
+    ],
+    "requiredPaths": [
+      {
+        "from": "sender",
+        "to": "mailbox"
+      },
+      {
+        "from": "forward",
+        "to": "db"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "sender",
+      "lane": "internet",
+      "col": 0,
+      "type": "external",
+      "label": "Internet sender",
+      "sublabel": "SMTP message",
+      "width": 132
+    },
+    {
+      "id": "mailbox",
+      "lane": "internet",
+      "col": 5,
+      "type": "external",
+      "label": "Destination mailbox",
+      "sublabel": "delivery is primary",
+      "width": 140
+    },
+    {
+      "id": "routing",
+      "lane": "cloudflare",
+      "col": 1,
+      "type": "cloud",
+      "label": "Email Routing",
+      "sublabel": "accepts the message",
+      "brand": "cloudflare",
+      "width": 132
+    },
+    {
+      "id": "ingest",
+      "lane": "cloudflare",
+      "col": 2,
+      "type": "backend",
+      "label": "mail-app-ingest",
+      "sublabel": "10 MiB guard + MIME parse",
+      "width": 140
+    },
+    {
+      "id": "store",
+      "lane": "cloudflare",
+      "col": 3,
+      "type": "backend",
+      "label": "Idempotent store",
+      "sublabel": "rules + pending AI row",
+      "tag": "one transaction",
+      "width": 140
+    },
+    {
+      "id": "forward",
+      "lane": "cloudflare",
+      "col": 4,
+      "type": "backend",
+      "label": "Forward original",
+      "sublabel": "transient errors re-thrown",
+      "width": 140
+    },
+    {
+      "id": "blob",
+      "lane": "storage",
+      "col": 2,
+      "type": "cloud",
+      "label": "Vercel Blob",
+      "sublabel": "attachment bytes",
+      "brand": "vercel",
+      "tag": "best effort",
+      "width": 132
+    },
+    {
+      "id": "db",
+      "lane": "storage",
+      "col": 3,
+      "type": "database",
+      "label": "Supabase Postgres",
+      "sublabel": "mail, rules + AI state",
+      "brand": "supabase",
+      "width": 150
+    },
+    {
+      "id": "recovery",
+      "lane": "ai",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Recovery cron",
+      "sublabel": "every 15 minutes",
+      "tag": "≤ 3 stale rows",
+      "width": 132
+    },
+    {
+      "id": "enrich",
+      "lane": "ai",
+      "col": 4,
+      "type": "backend",
+      "label": "Best-effort enrichment",
+      "sublabel": "waitUntil · validate + apply",
+      "tag": "local thresholds",
+      "width": 150
+    },
+    {
+      "id": "classify",
+      "lane": "ai",
+      "col": 5,
+      "type": "external",
+      "label": "Classification",
+      "sublabel": "schema-constrained JSON",
+      "brand": "openai",
+      "width": 150
+    }
+  ],
+  "edges": [
+    {
+      "id": "smtp-in",
+      "from": "sender",
+      "to": "routing",
+      "label": "SMTP"
+    },
+    {
+      "id": "invoke-worker",
+      "from": "routing",
+      "to": "ingest",
+      "label": "invokes Worker"
+    },
+    {
+      "id": "parse-store",
+      "from": "ingest",
+      "to": "store",
+      "variant": "emphasis"
+    },
+    {
+      "id": "store-forward",
+      "from": "store",
+      "to": "forward",
+      "label": "stored safely",
+      "variant": "emphasis"
+    },
+    {
+      "id": "deliver",
+      "from": "forward",
+      "to": "mailbox",
+      "label": "original email",
+      "variant": "emphasis"
+    },
+    {
+      "id": "upload-attachments",
+      "from": "ingest",
+      "to": "blob",
+      "label": "attachments",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "write-rows",
+      "from": "store",
+      "to": "db",
+      "label": "Hyperdrive"
+    },
+    {
+      "id": "start-enrichment",
+      "from": "forward",
+      "to": "enrich",
+      "label": "waitUntil",
+      "variant": "dashed",
+      "role": "async"
+    },
+    {
+      "id": "retry-stale",
+      "from": "recovery",
+      "to": "enrich",
+      "label": "retries stale AI rows",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "call-model",
+      "from": "enrich",
+      "to": "classify",
+      "label": "labels · spam · priority"
+    },
+    {
+      "id": "accepted-state",
+      "from": "enrich",
+      "to": "db",
+      "label": "accepted AI state",
+      "role": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Forwarding first",
+      "items": [
+        "Storage, attachments, AI, and monitoring never intentionally block delivery",
+        "Permanent forwarding errors are accepted only once the message is stored"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Local policy over model output",
+      "items": [
+        "Labels kept only at confidence ≥ 0.70",
+        "Spam moves automatically only at score ≥ 0.98",
+        "Rules run deterministically inside the storage transaction"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Recovery",
+      "items": [
+        "A 15-minute cron retries up to three stale pending/failed AI rows",
+        "Recovery never forwards the message again"
+      ]
+    }
+  ]
+}

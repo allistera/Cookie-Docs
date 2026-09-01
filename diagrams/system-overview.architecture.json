@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Cookie System Overview",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "app-requests",
+        "label": "App requests",
+        "focus": [
+          "web",
+          "ios",
+          "api",
+          "workers_api",
+          "db"
+        ],
+        "note": "Both clients call the Vercel API; the browser also reaches four Workers cross-origin."
+      },
+      {
+        "id": "worker-processing",
+        "label": "Worker processing",
+        "focus": [
+          "triggers",
+          "ingest",
+          "crons",
+          "db",
+          "api"
+        ],
+        "note": "Inbound mail and cron triggers drive work with no human waiting on a response."
+      },
+      {
+        "id": "shared-state",
+        "label": "Shared state",
+        "focus": [
+          "api",
+          "workers_api",
+          "ingest",
+          "crons",
+          "db"
+        ],
+        "note": "Both runtimes coordinate purely through the Postgres schema owned by Cookie-Web."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "ios",
+      "type": "frontend",
+      "label": "Cookie-iOS",
+      "sublabel": "native API client",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "no server logic"
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Cookie-Web SPA",
+      "sublabel": "Vue app on Vercel",
+      "pos": [
+        40,
+        170
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "triggers",
+      "type": "external",
+      "label": "Inbound email + crons",
+      "sublabel": "Email Routing, schedules",
+      "pos": [
+        40,
+        430
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Cookie-Web API",
+      "sublabel": "7 Vercel Functions",
+      "brand": "vercel",
+      "pos": [
+        400,
+        80
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "workers_api",
+      "type": "backend",
+      "label": "cookie-web-* Workers",
+      "sublabel": "labels, messages, tasks, search",
+      "brand": "cloudflare",
+      "pos": [
+        400,
+        220
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "ingest",
+      "type": "backend",
+      "label": "mail-app-ingest",
+      "sublabel": "Email Worker + recovery cron",
+      "brand": "cloudflare",
+      "pos": [
+        400,
+        360
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "crons",
+      "type": "backend",
+      "label": "Background Workers",
+      "sublabel": "data-enricher, scheduled-send-flusher",
+      "brand": "cloudflare",
+      "pos": [
+        400,
+        500
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "Supabase Postgres",
+      "sublabel": "schema owned by Cookie-Web",
+      "brand": "supabase",
+      "pos": [
+        940,
+        260
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "shared state"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Vercel",
+      "wraps": [
+        "api"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Cloudflare",
+      "wraps": [
+        "workers_api",
+        "ingest",
+        "crons"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "web-api",
+      "from": "web",
+      "to": "api",
+      "label": "Auth0 bearer token",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ios-api",
+      "from": "ios",
+      "to": "api",
+      "label": "same API + token"
+    },
+    {
+      "id": "web-workers",
+      "from": "web",
+      "to": "workers_api",
+      "label": "CORS, custom domains"
+    },
+    {
+      "id": "api-db",
+      "from": "api",
+      "to": "db"
+    },
+    {
+      "id": "workers-db",
+      "from": "workers_api",
+      "to": "db"
+    },
+    {
+      "id": "triggers-ingest",
+      "from": "triggers",
+      "to": "ingest",
+      "label": "inbound mail"
+    },
+    {
+      "id": "triggers-crons",
+      "from": "triggers",
+      "to": "crons",
+      "label": "cron schedules"
+    },
+    {
+      "id": "ingest-db",
+      "from": "ingest",
+      "to": "db",
+      "label": "Hyperdrive",
+      "labelSegment": 0
+    },
+    {
+      "id": "crons-db",
+      "from": "crons",
+      "to": "db",
+      "label": "enrichment results"
+    },
+    {
+      "id": "flusher-api",
+      "from": "crons",
+      "to": "api",
+      "label": "flush scheduled sends",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "right",
+      "via": [
+        [
+          490,
+          596
+        ],
+        [
+          1170,
+          596
+        ],
+        [
+          1170,
+          112
+        ]
+      ],
+      "labelAt": [
+        800,
+        596
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ownership",
+      "items": [
+        "Cookie-Web owns the schema and the Vercel API",
+        "Cookie-Worker owns everything outside a request/response cycle",
+        "Cookie-iOS is a pure client of the Cookie-Web API"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Shared state, not shared code",
+      "items": [
+        "No RPC or shared library between the two runtimes",
+        "Both halves coordinate only through the Postgres schema",
+        "Workers reach Postgres through Hyperdrive"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Deployment",
+      "items": [
+        "Cookie-Web and Cookie-Worker deploy independently",
+        "Migrations need coordination when shared state changes"
+      ]
+    }
+  ]
+}

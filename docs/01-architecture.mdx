@@ -38,6 +38,8 @@ flowchart TB
 
 The overview shows ownership and shared state only. External services appear in the focused flows below, where their role is easier to follow.
 
+**Interactive version:** [system overview diagram](/Cookie-Docs/diagrams/system-overview.html) — pan, zoom, guided views, and export.
+
 ## What runs where
 
 Cookie's server-side code is split across two providers. The split is historical
@@ -133,6 +135,8 @@ All parsing, orchestration, deterministic label rules, forwarding, and post-deli
 
 Forwarding to the real mailbox is the primary outcome — storage, attachment upload, AI classification, and monitoring failures never intentionally block delivery. Transient forwarding errors are re-thrown so the sending server retries; permanent forwarding errors are only accepted once the message is stored safely. A 15-minute cron sweeps up to three stale pending/failed AI rows for recovery, without forwarding the message again. See [Cookie-Worker → mail-app-ingest](/components/cookie-worker#mail-app-ingest).
 
+**Interactive version:** [inbound mail flow diagram](/Cookie-Docs/diagrams/inbound-mail.html) — both halves of the flow on one swim-lane canvas.
+
 ### 2. Interactive app traffic
 
 The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0, then call two sets of endpoints with the same bearer token — Cookie-Web's Vercel functions, and four Cloudflare Workers the browser reaches cross-origin:
@@ -158,6 +162,8 @@ flowchart TB
 ```
 
 Both halves verify the token the same way: the verified Auth0 issuer + immutable `sub` bind to `users.auth0_sub`, and token email claims never select a mailbox. The difference is only that the Workers are a cross-origin hop, so they also run a CORS allowlist and Cookie-Web's CSP must permit `https://*.infinitywave.online` in `connect-src`. See [Cookie-Web](/components/cookie-web) and [Cookie-Worker → Cookie Web API Workers](/components/cookie-worker#cookie-web-api-workers).
+
+**Interactive version:** [interactive app traffic diagram](/Cookie-Docs/diagrams/interactive-app.html) — all four Workers and their backing services individually.
 
 ### 3. Scheduled background work
 
@@ -185,6 +191,8 @@ flowchart TB
 - **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /api/send?resource=flush` on Cookie-Web so "Send Later" messages actually go out once due. It owns no mail-sending logic itself — Cookie-Web claims the due rows and calls Resend.
 
 See [Cookie-Worker → data-enricher and scheduled-send-flusher](/components/cookie-worker) for both.
+
+**Interactive version:** [scheduled background work diagram](/Cookie-Docs/diagrams/scheduled-work.html) — both cron flows side by side.
 
 ## Shared state, not shared code
 

@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Cookie Interactive App Traffic",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "auth",
+        "label": "Authentication",
+        "focus": [
+          "ios",
+          "auth0",
+          "web",
+          "api"
+        ],
+        "note": "Both clients log in with Auth0 and send the same bearer token to every endpoint."
+      },
+      {
+        "id": "cross-origin",
+        "label": "Cross-origin Workers",
+        "focus": [
+          "web",
+          "labels",
+          "messages",
+          "tasks",
+          "search"
+        ],
+        "note": "Four Workers on custom *-api.infinitywave.online domains, reached with CORS."
+      },
+      {
+        "id": "services",
+        "label": "Backing services",
+        "focus": [
+          "api",
+          "db",
+          "meili",
+          "openai",
+          "resend"
+        ],
+        "note": "Clients never talk to Postgres directly; services sit behind the API and Workers."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "ios",
+      "type": "frontend",
+      "label": "Cookie-iOS",
+      "sublabel": "native client",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "auth0",
+      "type": "security",
+      "label": "Auth0",
+      "sublabel": "verified issuer + sub",
+      "pos": [
+        40,
+        156
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "bearer tokens"
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Cookie-Web SPA",
+      "sublabel": "mail.infinitywave.online",
+      "pos": [
+        40,
+        280
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Cookie-Web API",
+      "sublabel": "7 Vercel Functions",
+      "brand": "vercel",
+      "pos": [
+        420,
+        60
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "labels",
+      "type": "backend",
+      "label": "cookie-web-labels",
+      "sublabel": "labels + label rules",
+      "brand": "cloudflare",
+      "pos": [
+        420,
+        176
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "messages",
+      "type": "backend",
+      "label": "cookie-web-messages",
+      "sublabel": "message state + contacts",
+      "brand": "cloudflare",
+      "pos": [
+        420,
+        292
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "tasks",
+      "type": "backend",
+      "label": "cookie-web-tasks",
+      "sublabel": "AI Today + Documents",
+      "brand": "cloudflare",
+      "pos": [
+        420,
+        408
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "search",
+      "type": "backend",
+      "label": "cookie-web-search",
+      "sublabel": "/search + /ask",
+      "brand": "cloudflare",
+      "pos": [
+        420,
+        524
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "resend",
+      "type": "external",
+      "label": "Resend",
+      "sublabel": "outbound mail",
+      "pos": [
+        1060,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "openai",
+      "type": "external",
+      "label": "OpenAI",
+      "sublabel": "summaries + compose",
+      "brand": "openai",
+      "pos": [
+        1060,
+        160
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "Supabase Postgres",
+      "sublabel": "shared schema",
+      "brand": "supabase",
+      "pos": [
+        1060,
+        292
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "meili",
+      "type": "database",
+      "label": "Meilisearch",
+      "sublabel": "hybrid search index",
+      "pos": [
+        1060,
+        524
+      ],
+      "size": [
+        170,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Vercel",
+      "wraps": [
+        "api"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Cloudflare",
+      "wraps": [
+        "labels",
+        "messages",
+        "tasks",
+        "search"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "ios-login",
+      "from": "ios",
+      "to": "auth0",
+      "variant": "security"
+    },
+    {
+      "id": "web-login",
+      "from": "web",
+      "to": "auth0",
+      "variant": "security"
+    },
+    {
+      "id": "ios-api",
+      "from": "ios",
+      "to": "api",
+      "label": "same API + token"
+    },
+    {
+      "id": "web-api",
+      "from": "web",
+      "to": "api",
+      "label": "bearer token",
+      "variant": "emphasis"
+    },
+    {
+      "id": "web-labels",
+      "from": "web",
+      "to": "labels"
+    },
+    {
+      "id": "web-messages",
+      "from": "web",
+      "to": "messages"
+    },
+    {
+      "id": "web-tasks",
+      "from": "web",
+      "to": "tasks"
+    },
+    {
+      "id": "web-search",
+      "from": "web",
+      "to": "search",
+      "label": "CORS, custom domains",
+      "labelSegment": 2
+    },
+    {
+      "id": "api-resend",
+      "from": "api",
+      "to": "resend",
+      "label": "sends mail"
+    },
+    {
+      "id": "api-openai",
+      "from": "api",
+      "to": "openai",
+      "label": "summarize + compose",
+      "labelSegment": 2
+    },
+    {
+      "id": "api-db",
+      "from": "api",
+      "to": "db"
+    },
+    {
+      "id": "labels-db",
+      "from": "labels",
+      "to": "db"
+    },
+    {
+      "id": "messages-db",
+      "from": "messages",
+      "to": "db"
+    },
+    {
+      "id": "tasks-db",
+      "from": "tasks",
+      "to": "db"
+    },
+    {
+      "id": "search-meili",
+      "from": "search",
+      "to": "meili",
+      "label": "hybrid search + Q&A"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "One token, two halves",
+      "items": [
+        "Verified Auth0 issuer + immutable sub bind to users.auth0_sub",
+        "Token email claims never select a mailbox",
+        "Vercel Functions and Workers verify the token the same way"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Cross-origin hop",
+      "items": [
+        "Workers run a CORS allowlist",
+        "Cookie-Web CSP must permit https://*.infinitywave.online in connect-src",
+        "Paths kept their names when routes moved off Vercel"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "No direct data access",
+      "items": [
+        "Browser and iOS never talk to Postgres directly",
+        "Search and mailbox Q&A are backed by Meilisearch"
+      ]
+    }
+  ]
+}

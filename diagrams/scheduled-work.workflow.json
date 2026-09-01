@@ -1,0 +1,234 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Cookie Scheduled Background Work",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "send-later",
+        "label": "Send Later",
+        "focus": [
+          "cron5",
+          "flusher",
+          "sendapi",
+          "resend",
+          "db"
+        ],
+        "note": "The flusher owns no mail-sending logic; Cookie-Web claims due rows and calls Resend."
+      },
+      {
+        "id": "daily-enrichment",
+        "label": "Daily enrichment",
+        "focus": [
+          "crondaily",
+          "enricher",
+          "openai",
+          "db"
+        ],
+        "note": "Task analysis, Inbox triage, and the news round-up, written to Postgres for AI Today."
+      }
+    ],
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "Worker / API step"
+        },
+        "messagebus": {
+          "label": "Cron trigger"
+        },
+        "database": {
+          "label": "Postgres"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "send",
+      "label": "Scheduled sending · every 5 minutes"
+    },
+    {
+      "id": "storage",
+      "label": "Supabase"
+    },
+    {
+      "id": "enrichment",
+      "label": "Daily enrichment · 05:00 UTC"
+    }
+  ],
+  "mainPath": [
+    "cron5",
+    "flusher",
+    "sendapi",
+    "resend"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "cron5",
+      "crondaily"
+    ],
+    "requiredPaths": [
+      {
+        "from": "cron5",
+        "to": "resend"
+      },
+      {
+        "from": "crondaily",
+        "to": "db"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "cron5",
+      "lane": "send",
+      "col": 0,
+      "type": "messagebus",
+      "label": "5-minute cron",
+      "sublabel": "Cloudflare trigger",
+      "width": 132
+    },
+    {
+      "id": "flusher",
+      "lane": "send",
+      "col": 1,
+      "type": "backend",
+      "label": "scheduled-send-flusher",
+      "sublabel": "owns no send logic",
+      "brand": "cloudflare",
+      "width": 170
+    },
+    {
+      "id": "sendapi",
+      "lane": "send",
+      "col": 2,
+      "type": "backend",
+      "label": "Cookie-Web send API",
+      "sublabel": "claims due rows",
+      "brand": "vercel",
+      "width": 156
+    },
+    {
+      "id": "resend",
+      "lane": "send",
+      "col": 3,
+      "type": "external",
+      "label": "Resend",
+      "sublabel": "outbound mail",
+      "width": 132
+    },
+    {
+      "id": "db",
+      "lane": "storage",
+      "col": 3,
+      "type": "database",
+      "label": "Supabase Postgres",
+      "sublabel": "due rows + results",
+      "brand": "supabase",
+      "width": 150
+    },
+    {
+      "id": "crondaily",
+      "lane": "enrichment",
+      "col": 0,
+      "type": "messagebus",
+      "label": "05:00 UTC cron",
+      "sublabel": "+ on-demand POST /run",
+      "width": 140
+    },
+    {
+      "id": "enricher",
+      "lane": "enrichment",
+      "col": 1,
+      "type": "backend",
+      "label": "data-enricher",
+      "sublabel": "Todoist, triage, news",
+      "brand": "cloudflare",
+      "width": 150
+    },
+    {
+      "id": "openai",
+      "lane": "enrichment",
+      "col": 2,
+      "type": "external",
+      "label": "OpenAI",
+      "sublabel": "task analysis + triage",
+      "brand": "openai",
+      "width": 150
+    }
+  ],
+  "edges": [
+    {
+      "id": "tick-5m",
+      "from": "cron5",
+      "to": "flusher"
+    },
+    {
+      "id": "flush-call",
+      "from": "flusher",
+      "to": "sendapi",
+      "label": "POST /api/send?resource=flush",
+      "variant": "emphasis"
+    },
+    {
+      "id": "send-mail",
+      "from": "sendapi",
+      "to": "resend",
+      "label": "due messages",
+      "variant": "emphasis"
+    },
+    {
+      "id": "claim-rows",
+      "from": "sendapi",
+      "to": "db",
+      "label": "claims due rows"
+    },
+    {
+      "id": "tick-daily",
+      "from": "crondaily",
+      "to": "enricher"
+    },
+    {
+      "id": "model-work",
+      "from": "enricher",
+      "to": "openai",
+      "label": "analysis + news round-up"
+    },
+    {
+      "id": "write-results",
+      "from": "enricher",
+      "to": "db",
+      "label": "results for AI Today",
+      "role": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ownership",
+      "items": [
+        "scheduled-send-flusher only triggers the flush endpoint",
+        "Cookie-Web claims due rows and calls Resend"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Daily enrichment",
+      "items": [
+        "Gathers Todoist tasks over MCP",
+        "Triages the last 24 hours of Inbox mail",
+        "Results read by AI Today through the cookie-web-tasks Worker"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Third cron",
+      "items": [
+        "mail-app-ingest's 15-minute sweep retries stale AI enrichment",
+        "Covered in the inbound-mail flow"
+      ]
+    }
+  ]
+}
