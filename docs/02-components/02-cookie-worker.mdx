@@ -74,6 +74,8 @@ Cloudflare Email Routing
   -> waitUntil(AI classification on a fresh client)
 ```
 
+**Interactive version:** [inbound mail flow diagram](/Cookie-Docs/diagrams/inbound-mail.html) — both halves of the flow on one swim-lane canvas.
+
 <FileTree>
 
 - src/
@@ -121,6 +123,8 @@ Runs daily and on demand to populate Cookie-Web's AI Today page.
 ## scheduled-send-flusher
 
 The simplest Worker: every 5 minutes it calls `POST /api/send?resource=flush` on Cookie-Web using a shared bearer token (`COOKIE_WEB_FLUSH_TOKEN` here, `SCHEDULED_SEND_FLUSH_TOKEN` on the Cookie-Web side). Cookie-Web owns claiming due `scheduled_sends` rows and calling Resend — this Worker is purely a clock.
+
+**Interactive version:** [scheduled background work diagram](/Cookie-Docs/diagrams/scheduled-work.html) — the `data-enricher` and `scheduled-send-flusher` cron flows side by side.
 
 ## Configuration highlights
 
