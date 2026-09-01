@@ -10,7 +10,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "blume": "^1.5.1"
+    "blume": "^1.5.3"
   },
   "devDependencies": {
     "prettier": "3.9.6"
