@@ -105,9 +105,9 @@
       "lane": "send",
       "col": 2,
       "type": "backend",
-      "label": "Cookie-Web send API",
+      "label": "cookie-web-send",
       "sublabel": "claims due rows",
-      "brand": "vercel",
+      "brand": "cloudflare",
       "width": 156
     },
     {
@@ -169,7 +169,7 @@
       "id": "flush-call",
       "from": "flusher",
       "to": "sendapi",
-      "label": "POST /api/send?resource=flush",
+      "label": "POST /send/flush",
       "variant": "emphasis"
     },
     {
@@ -210,7 +210,7 @@
       "title": "Ownership",
       "items": [
         "scheduled-send-flusher only triggers the flush endpoint",
-        "Cookie-Web claims due rows and calls Resend"
+        "cookie-web-send claims due rows and calls Resend"
       ]
     },
     {

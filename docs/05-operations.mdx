@@ -1,30 +1,28 @@
 ---
 title: Operations
-description: How each repository is validated, deployed, and rolled back, and where each part of the CI/CD surface lives.
+description: How each Cookie repository is validated, deployed, and coordinated in production.
 ---
 
-Each repository deploys independently and validates itself in CI before anything reaches production.
+Each repository owns its validation and deployment surface. Cookie-Web and Cookie-Worker must coordinate schema-dependent releases; Cookie-Agents and Cookie-Docs are independent, and Cookie-iOS is currently validated locally.
 
 ## CI and deployment by repository
 
-| Repository | CI (`ci.yml`) | Deployment |
+| Repository | Automated checks | Deployment |
 | --- | --- | --- |
-| Cookie-Web | Lint, unit tests, build, e2e | Automatic: push to `main` triggers CI and the linked Vercel production deployment |
-| Cookie-Web | — | `migrate.yml` runs `migrations/migrate.sh` automatically when `migrations/**` changes on `main` |
-| Cookie-Worker | Lint, typecheck, `dry-run --all` for every Worker | Manual: `deploy.yml` is dispatched with one Worker's directory name; it validates the whole repo, dry-runs that Worker again, and publishes only it |
-| Cookie-Worker | — | `search-reindex.yml` — manual, full reindex of Meilisearch via `scripts/reindex-meili.js` |
-| Cookie-Worker | — | `search-drift-repair.yml` — repairs rows whose `search_indexed_at` has fallen behind Meilisearch, via `scripts/repair-search-drift.js` |
-| Cookie-iOS | Build + `swiftlint --strict` + unit tests | No automated deploy — built and run locally / through Xcode |
+| Cookie-Web | Format, Oxlint/ESLint, unit tests, production build, Chromium Playwright | Vercel deploys pushes to `main`; migration changes also run `migrate.yml` |
+| Cookie-Worker | Format, lint, generated-type check, repository typecheck, unit tests, `dry-run --all` | Manual `Deploy` workflow; default `all` publishes all thirteen sequentially, or one Worker can be selected |
+| Cookie-iOS | No checked-in CI workflow | Build/test/lint and distribution are local through Xcode/XcodeGen/SwiftLint |
+| Cookie-Agents | Ruff, Pytest, and Docker image build | Render Blueprint auto-deploys the API on `main`; separate workflow publishes static API docs |
+| Cookie-Docs | Format and production build | GitHub Pages workflow deploys `dist/` from `main` |
 
-:::note
-Cookie-Worker deploys are intentionally manual, one Worker at a time, so a bad change to `data-enricher` can never take down `mail-app-ingest` in the same push.
-:::
+Cookie-Worker deploy validation always checks the whole repository before publishing. A single-Worker selection then dry-runs that capsule once more; `all` publishes the discovered Workers in workflow order under one production concurrency lock.
 
 ## Validation commands
 
 <Tabs>
   <Tab title="Cookie-Web">
     ```sh
+    npm run format:check
     npm run lint
     npm run test:unit -- --run
     npm run build
@@ -33,6 +31,7 @@ Cookie-Worker deploys are intentionally manual, one Worker at a time, so a bad c
   </Tab>
   <Tab title="Cookie-Worker">
     ```sh
+    npm run format:check
     npm run lint
     npm run types -- --all --check
     npm run typecheck
@@ -42,29 +41,57 @@ Cookie-Worker deploys are intentionally manual, one Worker at a time, so a bad c
   </Tab>
   <Tab title="Cookie-iOS">
     ```sh
+    xcodegen generate
     xcodebuild -project Cookie.xcodeproj -scheme Cookie \
       -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' test
     swiftlint --strict
     ```
   </Tab>
+  <Tab title="Cookie-Agents">
+    ```sh
+    docker compose up -d --build
+    docker compose exec api pytest tests/
+    curl http://localhost:8000/health
+    ```
+  </Tab>
+  <Tab title="Cookie-Docs">
+    ```sh
+    npm run format:check
+    npm run doctor
+    npm run build
+    ```
+  </Tab>
 </Tabs>
 
-## Deploying a Worker change
+## Deploying Worker and schema changes
 
-1. Apply any Cookie-Web migration the change depends on first — see [coordinating migrations](/data-model#coordinating-with-cookie-worker).
-2. Confirm the target Worker's Cloudflare bindings (Hyperdrive, email route) and required secrets are already in place.
-3. Run the `Deploy` workflow in GitHub Actions with the Worker's directory name (`mail-app-ingest`, `data-enricher`, or `scheduled-send-flusher`).
-4. Verify in production: for `mail-app-ingest`, send a real message and confirm it's forwarded, a `messages` row and `stored` log event appear, `message_ai.status` reaches `completed`, and spam above the threshold lands in the hidden Spam folder rather than Inbox.
-5. Check Sentry for errors tagged with the Worker's environment.
+1. Apply any Cookie-Web migration first. Runtime code must tolerate the old schema until the migration is present.
+2. Run the Cookie-Worker validation suite and a selected-worker dry-run.
+3. Dispatch `Deploy` with `all` or the exact directory name under `workers/`.
+4. Verify the changed path in production. For inbound mail, confirm forwarding, durable storage, classification, and indexing; for browser APIs, confirm Auth0, CORS, and the custom domain; for service bindings, verify both caller and target logs.
+5. Inspect Sentry by `service` and `operation` tags.
 
-Cookie-Worker's own `RUNBOOK.md` has the full checklist, including AI-recovery verification, credential rotation, and rollback steps.
+Cookie-Worker's `RUNBOOK.md` contains the detailed production, search-repair, rotation, incident, and rollback checklists.
 
-## Secrets
+## Search operations
 
-Secrets are scoped per repository and, within Cookie-Worker, per Worker — the `Deploy` workflow syncs only the selected Worker's own secrets, so `mail-app-ingest`, `data-enricher`, and `scheduled-send-flusher` never receive each other's credentials. Cross-repository secrets are the shared bearer tokens documented on the [architecture](/architecture#3-scheduled-background-work) and [Cookie-Worker](/components/cookie-worker#configuration-highlights) pages (`SCHEDULED_SEND_FLUSH_TOKEN` / `COOKIE_WEB_FLUSH_TOKEN`, `ENRICHER_TRIGGER_TOKEN` / `HTTP_TRIGGER_TOKEN`) — both sides of each pair must match.
+- `Search Reindex` rebuilds the Meilisearch indexes from owned Postgres rows and configures the OpenAI embedder used by Meilisearch.
+- `Search Drift Repair` repairs rows whose `search_indexed_at` watermark trails the row or a task's subtasks.
+- Runtime Workers do not call `/v1/embeddings`; they write documents to Meilisearch, which owns embedding generation.
 
-Vercel stores Cookie-Web's production values; GitHub Actions stores only the secrets its own workflows need — migrations, plus an `OPENAI_API_KEY` scoped to `/v1/embeddings` that `search-reindex.yml` hands to Meilisearch as its embedder credential. Cloudflare stores each Worker's secrets, set via `wrangler secret put` from that Worker's own directory; a deployed Worker's own `OPENAI_API_KEY` only needs `/v1/responses` — no Worker calls `/v1/embeddings` at runtime.
+The API keys used for runtime Responses calls and the reindex embedder may therefore require different scopes even when they share the `OPENAI_API_KEY` repository-secret name.
 
-## Local development safety
+## Secrets and bindings
 
-Both Cookie-Web and Cookie-Worker call out the same rule: **never point local development or testing at the production database.** Cookie-Web's local API middleware falls back to fixture data when `DATABASE_URL` is unset; Cookie-Worker requires a separate development Supabase project for local Wrangler sessions.
+Worker secrets are synchronized only to the capsules that need them. Common examples are `SENTRY_DSN`, `OPENAI_API_KEY`, `MEILISEARCH_API_KEY`, and `BLOB_READ_WRITE_TOKEN`; `EMAIL_FROM` and `RESEND_API_KEY` for `cookie-web-send` are retained as Cloudflare secrets once set.
+
+Two cross-Worker pairs must agree:
+
+- `cookie-web-tasks` → `data-enricher`: service binding plus matching trigger token.
+- `scheduled-send-flusher` → `cookie-web-send`: `SEND` service binding plus matching flush bearer secret.
+
+Vercel separately holds Cookie-Web's compatibility-send and migration settings. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
+
+## Local-development safety
+
+Never point routine Cookie-Web or Cookie-Worker development at the production Supabase database. Cookie-Web can use fixtures without `DATABASE_URL`; Worker development requires a separate Supabase project. Cookie-Agents is isolated and may use its Docker Compose PostgreSQL volume because it does not share the mail-app schema.

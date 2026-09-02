@@ -3,7 +3,7 @@ title: Data model
 description: The shared Supabase Postgres schema, migration conventions, and how Cookie-Web and Cookie-Worker stay compatible with it.
 ---
 
-Cookie uses one Supabase Postgres database for everything. The migrations live in the **Cookie-Web** repository under `migrations/`, but **Cookie-Worker** reads and writes the same tables through a Hyperdrive-proxied connection — there is no separate schema or sync process between them.
+The Cookie mail application uses one Supabase Postgres database. The migrations live in the **Cookie-Web** repository under `migrations/`, but **Cookie-Worker** reads and writes the same tables through a Hyperdrive-proxied connection — there is no separate schema or sync process between them. Cookie-Agents is outside this data model and owns a separate Render PostgreSQL database.
 
 ## Conventions
 
@@ -29,7 +29,7 @@ The script creates `schema_migrations` if needed and safely skips files already 
 | AI enrichment | `0010`, `0011`, `0015` | Per-label auto-tag settings, model/label provenance, durable `message_ai` pending/failed state |
 | Scheduled mail | `0012`, `0032`, `0033`, `0044`, `0046` | Inbound snooze (passive: a due message just becomes visible again) vs. "Send Later" (active: `scheduled_sends` + leases, polled by `scheduled-send-flusher`) |
 | Realtime notifications | `0016` | Short-lived opaque event tokens; Realtime broadcasts only the token, an authenticated function resolves sender/subject |
-| Search | `0017`, `0042`, `0048`, `0049`, `0055`, `0056` | Search weighting, trigram indexes, document search, Meilisearch drift tracking (`search_indexed_at`), embedding columns dropped |
+| Search | `0017`, `0042`, `0048`, `0049`, `0055`–`0057` | Search weighting, document search, Meilisearch drift tracking (`search_indexed_at`) for messages/documents/tasks, embedding columns dropped |
 | Contacts | `0018`, `0019` | Derived contact views for compose suggestions |
 | Tasks & summaries | `0018` (tasks_and_summaries) | Backing store for AI Today |
 | Soft delete & security | `0020`, `0028`, `0039`, `0040` | Soft delete, receipt-capability expiry (90 days), per-user rate-limit counters, Auth0 `sub` hardening |
@@ -37,6 +37,9 @@ The script creates `schema_migrations` if needed and safely skips files already 
 | Calendar | `0022`–`0027`, `0031`, `0041`, `0047` | Events, calendars, recurrence (incl. `BYDAY`), all-day events, calendar subscriptions |
 | Label rules | `0029`, `0030` | Deterministic user-defined tagging, evaluated synchronously by Cookie-Worker inside the storage transaction. `0030` added an `action` column (`apply_label`/`mark_done`) so a rule could mark mail done instead of only labeling, but Cookie-Worker's `rules.js` currently only implements `apply_label` — `mark_done` rules are stored but not yet acted on |
 | Documents | `0036`–`0038`, `0048`, `0049`, `0055`, `0056` | Notes/documents, templates, tags, full-text search; `0055`/`0056` mirror the Search row's Meilisearch drift tracking and embedding-column removal |
+| Follow-up reminders | `0052` | Optional reminders on sent mail; scheduled sends carry the timestamp until delivery creates the sent row |
+| Task projects | `0053`, `0054` | Self-nesting project tree; a null project is the static Inbox; project descriptions arrived with task items |
+| User-authored tasks | `0054`, `0057` | Tasks, due dates, completion, project membership, parent/subtask links, and Meilisearch drift watermark |
 | Indexing/perf | `0034`, `0035`, `0043`, `0045` | Query and join index cleanups |
 
 :::note
@@ -48,7 +51,7 @@ This table groups migrations by feature area for orientation. For exact column d
 Two features intentionally never expose mailbox content through the token they hand to a client:
 
 - **Read receipts** (`0021`, `0028`): the tracking pixel URL carries an opaque token with no mailbox or message identifier; stored sent HTML excludes the pixel so opening your own sent copy never marks it read. Image blocking can suppress a receipt and security scanners can trigger a false one, so the UI treats status as indicative, not guaranteed. Capabilities expire after 90 days.
-- **Browser notification events** (`0016`): Realtime broadcasts only an opaque event token; an authenticated Vercel function leases and resolves the owned message before the browser ever sees a sender or subject. Unclaimed events are pruned after 24 hours.
+- **Browser notification events** (`0016`): Realtime broadcasts only an opaque event token; the authenticated `cookie-web-notifications` Worker leases and resolves the owned message before the browser sees a sender or subject. Unclaimed events are pruned after 24 hours.
 
 ## Rate limits
 
@@ -60,6 +63,8 @@ Because `mail-app-ingest` and `data-enricher` depend on specific tables and colu
 
 - Apply `0010` before deploying Cookie-Worker code that creates pending enrichment rows during inbound storage.
 - Apply `0029` before deploying Cookie-Worker code that reads `label_rules` (`0030`'s `action` column exists in the schema, but Cookie-Worker does not yet read it — see the schema areas table above).
-- Apply `0032` before deploying the `scheduled-send-flusher` Worker — its flush calls would otherwise 404 against an API that doesn't yet recognize `resource=scheduled`/`resource=flush`.
+- Apply `0032` before deploying scheduled-send API or flusher code that reads and leases rows from `scheduled_sends`.
+- Apply `0052` before deploying send/follow-up code that reads `follow_up_at`.
+- Apply `0053` and `0054` before deploying Tasks project/item routes; apply `0057` before enabling task search synchronization.
 
 The general rule: **migrate Cookie-Web first, deploy the dependent Cookie-Worker change second.**

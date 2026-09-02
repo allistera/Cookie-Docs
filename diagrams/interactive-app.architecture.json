@@ -27,7 +27,7 @@
           "tasks",
           "search"
         ],
-        "note": "Four Workers on custom *-api.infinitywave.online domains, reached with CORS."
+        "note": "Ten API Workers on custom *-api.infinitywave.online domains, reached with CORS."
       },
       {
         "id": "services",
@@ -90,8 +90,8 @@
     {
       "id": "api",
       "type": "backend",
-      "label": "Cookie-Web API",
-      "sublabel": "7 Vercel Functions",
+      "label": "Legacy send API",
+      "sublabel": "/api/send compatibility",
       "brand": "vercel",
       "pos": [
         420,
@@ -105,8 +105,8 @@
     {
       "id": "labels",
       "type": "backend",
-      "label": "cookie-web-labels",
-      "sublabel": "labels + label rules",
+      "label": "Mail APIs",
+      "sublabel": "emails · messages · labels",
       "brand": "cloudflare",
       "pos": [
         420,
@@ -120,8 +120,8 @@
     {
       "id": "messages",
       "type": "backend",
-      "label": "cookie-web-messages",
-      "sublabel": "message state + contacts",
+      "label": "Productivity APIs",
+      "sublabel": "calendar · tasks · search",
       "brand": "cloudflare",
       "pos": [
         420,
@@ -135,8 +135,8 @@
     {
       "id": "tasks",
       "type": "backend",
-      "label": "cookie-web-tasks",
-      "sublabel": "AI Today + Documents",
+      "label": "AI + event APIs",
+      "sublabel": "ai · notifications · receipts",
       "brand": "cloudflare",
       "pos": [
         420,
@@ -150,8 +150,8 @@
     {
       "id": "search",
       "type": "backend",
-      "label": "cookie-web-search",
-      "sublabel": "/search + /ask",
+      "label": "Cloudflare send API",
+      "sublabel": "send + flusher binding",
       "brand": "cloudflare",
       "pos": [
         420,
@@ -180,7 +180,7 @@
       "id": "openai",
       "type": "external",
       "label": "OpenAI",
-      "sublabel": "summaries + compose",
+      "sublabel": "AI features",
       "brand": "openai",
       "pos": [
         1060,
@@ -257,7 +257,7 @@
       "id": "ios-api",
       "from": "ios",
       "to": "api",
-      "label": "same API + token"
+      "label": "legacy + Worker APIs"
     },
     {
       "id": "web-api",
@@ -296,9 +296,9 @@
     },
     {
       "id": "api-openai",
-      "from": "api",
+      "from": "tasks",
       "to": "openai",
-      "label": "summarize + compose",
+      "label": "AI features",
       "labelSegment": 2
     },
     {
@@ -323,9 +323,20 @@
     },
     {
       "id": "search-meili",
-      "from": "search",
+      "from": "messages",
       "to": "meili",
-      "label": "hybrid search + Q&A"
+      "label": "federated search"
+    },
+    {
+      "id": "cloudflare-send-db",
+      "from": "search",
+      "to": "db"
+    },
+    {
+      "id": "cloudflare-send-resend",
+      "from": "search",
+      "to": "resend",
+      "label": "outbound mail"
     }
   ],
   "cards": [
@@ -335,7 +346,7 @@
       "items": [
         "Verified Auth0 issuer + immutable sub bind to users.auth0_sub",
         "Token email claims never select a mailbox",
-        "Vercel Functions and Workers verify the token the same way"
+        "Worker APIs verify one Auth0 token consistently"
       ]
     },
     {
@@ -344,7 +355,7 @@
       "items": [
         "Workers run a CORS allowlist",
         "Cookie-Web CSP must permit https://*.infinitywave.online in connect-src",
-        "Paths kept their names when routes moved off Vercel"
+        "Worker routes use clean paths on ten custom domains"
       ]
     },
     {

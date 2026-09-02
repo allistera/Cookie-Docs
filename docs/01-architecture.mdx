@@ -3,12 +3,13 @@ title: Architecture
 description: How the Cookie repositories and the Cloudflare, Vercel, Supabase, OpenAI, and Resend services around them fit together.
 ---
 
-Cookie has three runtime repositories that share one database, plus a documentation repository:
+The Cookie mail application has three runtime repositories that share one database, plus a documentation repository. Cookie-Agents is a fifth, separate runtime with its own database:
 
-- **Cookie-Web** owns the shared schema (`migrations/` lives there) and serves both the browser app and the Vercel API that Cookie-iOS also calls.
-- **Cookie-Worker** owns everything that runs outside a request/response cycle: inbound mail ingestion, overnight AI enrichment, and a scheduled-send flusher.
+- **Cookie-Web** owns the shared schema (`migrations/` lives there), serves the browser SPA from Vercel, and retains the legacy `/api/send` compatibility endpoint.
+- **Cookie-Worker** owns ten browser/API Workers and three background Workers: inbound mail ingestion, overnight AI enrichment, and the scheduled-send clock.
 - **Cookie-iOS** is a native client of the Cookie-Web API — it owns no server-side logic or data of its own.
 - **Cookie-Docs** builds this static Blume/MDX site and deploys it to GitHub Pages — it is not on any mail or app request path.
+- **Cookie-Agents** collects Gmail and Todoist data through FastAPI on Render. It neither calls nor shares data with the Cookie mail application.
 
 :::note
 Cookie-Web and Cookie-Worker are deployed and versioned independently, but a change to one is not safe in isolation when it touches shared state — see [migration coordination](/data-model#coordinating-with-cookie-worker) in the data model page.
@@ -21,7 +22,7 @@ Cookie-Web and Cookie-Worker are deployed and versioned independently, but a cha
 ```mermaid
 flowchart TB
     Clients["Cookie-Web + Cookie-iOS<br/>user interfaces"]
-    API["Cookie-Web API<br/>Vercel Functions"]
+    API["Cookie API<br/>Cloudflare Workers + legacy Vercel send"]
     DB[("Supabase Postgres")]
 
     Clients --> API
@@ -42,28 +43,35 @@ The overview shows ownership and shared state only. External services appear in 
 
 ## What runs where
 
-Cookie's server-side code is split across two providers. The split is historical
-rather than principled: everything began as Vercel Functions, and the routes
-that needed Cloudflare's edge — or that were being rewritten anyway — moved to
-Workers one at a time. Both halves talk to the same Supabase database.
+Cookie's mail-app server-side code is split across two providers. The Vue SPA
+and compatibility `/api/send` route remain on Vercel; the active APIs have
+moved to Cloudflare Workers one route family at a time. Both halves talk to the
+same Supabase database.
 
 | Runtime | Provider | What it serves |
 | --- | --- | --- |
-| Static SPA + 7 Functions | **Vercel** | `mail.infinitywave.online` — the Vue app, plus `api/`: `emails`, `compose`, `send`, `summarize`, `calendar-events`, `read-receipts`, `notification-event` |
+| Static SPA + legacy send | **Vercel** | `mail.infinitywave.online` — the Vue app and `/api/send`, still used by the current web and iOS clients |
 | Private Blob storage | **Vercel** | Attachment bytes written by `mail-app-ingest` |
+| `cookie-web-ai` | **Cloudflare** | `ai-api.infinitywave.online` — compose and thread summaries |
+| `cookie-web-calendar` | **Cloudflare** | `calendar-api.infinitywave.online` — calendars, events, ICS sync, and natural-language event drafts |
+| `cookie-web-emails` | **Cloudflare** | `emails-api.infinitywave.online` — mailbox lists and lightweight app state |
 | `cookie-web-labels` | **Cloudflare** | `labels-api.infinitywave.online` — labels and label rules |
 | `cookie-web-messages` | **Cloudflare** | `messages-api.infinitywave.online` — single-message read/state/unsubscribe, attachments, contacts |
-| `cookie-web-tasks` | **Cloudflare** | `tasks-api.infinitywave.online` — AI Today cards and the Documents store |
-| `cookie-web-search` | **Cloudflare** | `search-api.infinitywave.online` — hybrid search over mail and documents (`GET /search`) and mailbox Q&A (`POST /ask`), both backed by Meilisearch |
+| `cookie-web-notifications` | **Cloudflare** | `notifications-api.infinitywave.online` — browser-notification event claim/ack |
+| `cookie-web-receipts` | **Cloudflare** | `receipts-api.infinitywave.online` — tracking pixel and authenticated receipt status |
+| `cookie-web-search` | **Cloudflare** | `search-api.infinitywave.online` — federated hybrid search and mailbox Q&A |
+| `cookie-web-send` | **Cloudflare** | `send-api.infinitywave.online` — outbound/scheduled delivery; currently used by the flusher service binding while web/iOS retain Vercel compatibility calls |
+| `cookie-web-tasks` | **Cloudflare** | `tasks-api.infinitywave.online` — AI Today, Tasks, projects, and Documents |
 | `mail-app-ingest` | **Cloudflare** | Email Worker on inbound mail (+ a 15-minute recovery cron) |
 | `data-enricher` | **Cloudflare** | Cron at 05:00 UTC, plus on-demand `POST /run` |
 | `scheduled-send-flusher` | **Cloudflare** | Cron every 5 minutes |
+| Cookie-Agents API + database | **Render** | Separate Gmail/Todoist collector; not connected to the mail-app schema |
 
 :::note
-The three `cookie-web-*` Workers used to be Vercel Functions (`api/labels.js`,
-`api/messages.js`, `api/tasks.js`). The paths kept their names through the move,
-so `/messages` on the Worker is the same endpoint the SPA has always called —
-only the origin changed. Anything still under `api/` in Cookie-Web is Vercel.
+The ten browser-facing `cookie-web-*` Workers replace the former Vercel route
+families. Most replace `?resource=` multiplexing with clean paths such as
+`/emails/state`, `/send/scheduled`, and `/tasks/refresh`. Cookie-Web still keeps
+`api/send.js` as a compatibility path for its current clients.
 :::
 
 ## Three request flows
@@ -139,18 +147,18 @@ Forwarding to the real mailbox is the primary outcome — storage, attachment up
 
 ### 2. Interactive app traffic
 
-The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0, then call two sets of endpoints with the same bearer token — Cookie-Web's Vercel functions, and four Cloudflare Workers the browser reaches cross-origin:
+The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0. The browser calls the ten Cloudflare API Workers cross-origin and still uses Vercel's compatibility send route; the current iOS build uses a mix of Worker endpoints and legacy Vercel paths:
 
 ```mermaid
 flowchart TB
     Login["Cookie-Web or Cookie-iOS<br/>logs in with Auth0"]
 
     subgraph Vercel["Vercel"]
-        API["Cookie-Web API<br/>emails, compose,<br/>send, summarize, calendar"]
+        API["Cookie-Web compatibility API<br/>/api/send"]
     end
 
     subgraph CF["Cloudflare"]
-        Workers["cookie-web-labels<br/>cookie-web-messages<br/>cookie-web-tasks<br/>cookie-web-search"]
+        Workers["10 cookie-web-* APIs<br/>mail · AI · calendar · tasks<br/>search · send · notifications"]
     end
 
     Services["Supabase · data<br/>Meilisearch · search<br/>OpenAI · AI features<br/>Resend · outbound mail"]
@@ -163,7 +171,7 @@ flowchart TB
 
 Both halves verify the token the same way: the verified Auth0 issuer + immutable `sub` bind to `users.auth0_sub`, and token email claims never select a mailbox. The difference is only that the Workers are a cross-origin hop, so they also run a CORS allowlist and Cookie-Web's CSP must permit `https://*.infinitywave.online` in `connect-src`. See [Cookie-Web](/components/cookie-web) and [Cookie-Worker → Cookie Web API Workers](/components/cookie-worker#cookie-web-api-workers).
 
-**Interactive version:** [interactive app traffic diagram](/Cookie-Docs/diagrams/interactive-app.html) — all four Workers and their backing services individually.
+**Interactive version:** [interactive app traffic diagram](/Cookie-Docs/diagrams/interactive-app.html) — the Worker API groups and their backing services.
 
 ### 3. Scheduled background work
 
@@ -182,13 +190,13 @@ flowchart TB
 ```mermaid
 flowchart TB
     Cron["5-minute cron"] --> Flusher["scheduled-send-flusher"]
-    Flusher --> API["Cookie-Web<br/>send API"]
+    Flusher --> API["cookie-web-send<br/>service binding"]
     API --> DB[("Supabase Postgres")]
     API --> Resend[["Resend"]]
 ```
 
 - **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It runs AI task analysis over important mail, triages the last 24 hours of Inbox mail, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through the `cookie-web-tasks` Worker.
-- **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /api/send?resource=flush` on Cookie-Web so "Send Later" messages actually go out once due. It owns no mail-sending logic itself — Cookie-Web claims the due rows and calls Resend.
+- **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /send/flush` on `cookie-web-send` over a Cloudflare service binding. It owns no mail-sending logic itself — `cookie-web-send` claims the due rows and calls Resend.
 
 See [Cookie-Worker → data-enricher and scheduled-send-flusher](/components/cookie-worker) for both.
 
@@ -196,4 +204,4 @@ See [Cookie-Worker → data-enricher and scheduled-send-flusher](/components/coo
 
 ## Shared state, not shared code
 
-Cookie-Web and Cookie-Worker are separate deployables that coordinate purely through the Postgres schema: Cookie-Web defines and applies migrations; Cookie-Worker's `mail-app-ingest` and `data-enricher` read and write the same tables through a Hyperdrive-proxied connection. There is no RPC or shared library between the two runtimes — a Worker capsule only gains access to another Worker's code once at least two Workers actually need it (see [Cookie-Worker](/components/cookie-worker)).
+Cookie-Web and Cookie-Worker are separate deployables that coordinate primarily through the Postgres schema: Cookie-Web defines and applies migrations, while Workers read and write the same tables through Hyperdrive. Two narrow Worker-to-Worker calls use Cloudflare service bindings: `cookie-web-tasks` triggers `data-enricher`, and `scheduled-send-flusher` calls `cookie-web-send`. Cookie-Agents remains outside both paths with its own Render PostgreSQL database.

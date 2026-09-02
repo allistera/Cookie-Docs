@@ -9,10 +9,12 @@ Cookie's AI features are deliberately narrow: each one assists a specific, famil
 | --- | --- | --- |
 | Auto-tagging | `mail-app-ingest` (Cookie-Worker) | OpenAI structured response |
 | Spam detection | `mail-app-ingest` (Cookie-Worker) | Same structured response as auto-tagging |
-| Search (mail & documents) | `cookie-web-search` (Cookie-Worker) | Meilisearch hybrid search |
+| Federated search (mail, documents & tasks) | `cookie-web-search` (Cookie-Worker) | Meilisearch hybrid/federated search |
 | Mailbox Q&A | `cookie-web-search` (Cookie-Worker) | OpenAI Responses API |
-| AI Compose | `api/compose` (Cookie-Web) | OpenAI Responses API |
-| Reading-view summaries | `api/summarize` (Cookie-Web) | OpenAI Responses API |
+| AI Compose | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
+| Reading-view summaries | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
+| Natural-language calendar drafts | `cookie-web-calendar` (Cookie-Worker) | OpenAI Responses API |
+| Link-only unsubscribe assistance | `cookie-web-messages` (Cookie-Worker) | OpenAI Responses API |
 | AI Today: task extraction, inbox triage, news | `data-enricher` (Cookie-Worker) | OpenAI Responses API |
 
 ## What “AI Inbox” means
@@ -87,19 +89,19 @@ Spam is stored, not deleted, and the high threshold deliberately favours false n
 
 ## Search and mailbox Q&A
 
-`GET /search`, served by the `cookie-web-search` Worker, queries Meilisearch's hybrid ranking directly — Meilisearch blends keyword and semantic matches itself via its `semanticRatio` setting, so Cookie no longer computes embeddings or fuses ranked lists in application code. Structured filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`, `in:`) are applied alongside the query. The type-ahead path (`mode=keyword`) sets `semanticRatio: 0` so it spends no embedding call. Meilisearch is a hard dependency for search: if it is unreachable, search fails rather than degrading to a keyword-only fallback.
+`GET /search`, served by the `cookie-web-search` Worker, queries Meilisearch directly. Without `scope`, it preserves the mail-only response contract; `scope=all|mail|documents|tasks` runs the unified search page's federated query. Meilisearch blends keyword and semantic matches via its `semanticRatio`, so Cookie no longer computes embeddings or fuses ranked lists in application code. Mail filters (`tag:`, `sender:`, `to:`, `has:attachment`, `before:`, `after:`, `in:`), document tags/starred state, and incomplete task documents are applied per index. Subtask titles are indexed with their top-level task. The type-ahead path (`mode=keyword`) sets `semanticRatio: 0`. Meilisearch is a hard dependency: an outage returns an error instead of falling back to Postgres.
 
 `POST /ask`, also served by the `cookie-web-search` Worker, retrieves owned mailbox context from Meilisearch and asks the model to answer with cited messages. The retrieval and answer endpoints are Auth0-protected and rate-limited; retrieved message content is loaded server-side rather than accepted from the client.
 
 ## Reading-view summaries
 
-`POST /api/summarize` accepts only an owned message ID. Cookie-Web resolves the complete thread server-side, orders it chronologically, and sends a bounded transcript to the Responses API. The current limits are 50 messages per thread, 20,000 body characters per message, and 100,000 characters for the assembled transcript; an oversized thread is rejected rather than silently summarized from partial context.
+`POST /summarize` on `cookie-web-ai` accepts only an owned message ID. The Worker resolves the complete thread server-side, orders it chronologically, and sends a bounded transcript to the Responses API. The current limits are 50 messages per thread, 20,000 body characters per message, and 100,000 characters for the assembled transcript; an oversized thread is rejected rather than silently summarized from partial context.
 
 The resulting summary is saved to the selected message's `message_ai.summary` field and restored when the reader is reopened. The upsert changes only the summary, so it cannot overwrite classification status, spam state, priority, or provenance.
 
 ## AI Compose
 
-`POST /api/compose` accepts a user instruction, the current composer state, and an optional owned message ID for reply context — it fetches that context server-side rather than trusting whatever the browser sends. It returns a subject/body draft only:
+`POST /compose` on `cookie-web-ai` accepts a user instruction, the current composer state, and an optional owned message ID for reply context — it fetches that context server-side rather than trusting whatever the browser sends. It returns a subject/body draft only:
 
 :::note
 Generation never calls Resend. The user must explicitly review, edit, and send the draft through the normal send path — in both Cookie-Web and Cookie-iOS.
@@ -107,13 +109,21 @@ Generation never calls Resend. The user must explicitly review, edit, and send t
 
 ## AI Today
 
-Built entirely by `data-enricher` and read through `GET /api/tasks`:
+Built by `data-enricher` and read through `cookie-web-tasks`'s `GET /tasks`:
 
 - **Suggested to-dos** — Cookie's own Tasks due today or overdue (the same `task_items` the Tasks app edits, served by `cookie-web-tasks`) plus AI-extracted action items from important mail, most-pressing first. Completing or rescheduling one here updates it in the Tasks app.
 - **Email triage** — recent Inbox mail divided into **Reply Needed**, **Review**, and **Noise**, rebuilt daily at 5 a.m. UTC.
 - **News round-up** — new GitHub repos and Product Hunt launches ranked against interests stored in `users.prefs` (edited in Settings → Personalisation), plus BBC UK headlines, which are never filtered.
 
-`POST /api/tasks?resource=refresh` calls `data-enricher`'s `POST /run?phase=today` on demand when `ENRICHER_RUN_URL`/`ENRICHER_TRIGGER_TOKEN` are configured; without them, refresh only re-reads the last stored result.
+`POST /tasks/refresh` calls `data-enricher`'s `POST /run?phase=today` over the `ENRICHER` service binding, carrying the shared trigger token and enforcing the configured owner before the rebuild.
+
+## Calendar interpretation
+
+`POST /calendar-events` with `action: "interpret"` turns natural language plus an IANA time zone into a bounded event draft. The browser or iOS client must show and explicitly submit that draft in a second create request; interpretation alone never writes a calendar row. The route shares the durable per-user AI rate limit.
+
+## Link-only unsubscribe assistance
+
+`cookie-web-messages` prefers RFC one-click and `mailto:` unsubscribe mechanisms. For a sender that exposes only a web page, the optional AI tier reads sanitized, size-bounded page HTML, proposes at most one form submission, and judges the returned page for a clear confirmation. Page text is untrusted: code validates the public HTTPS target, redirect chain, related host, fields, values, byte limits, and end-to-end deadline before the model's proposal can cause a request. Login, CAPTCHA, JavaScript-only, or ambiguous flows stop without claiming success.
 
 ### How email triage chooses what to show
 
@@ -155,6 +165,7 @@ Triage is a view, not a mailbox mutation. It never sends, archives, or deletes a
 
 - **Forwarding first**: in `mail-app-ingest`, storage, classification, and monitoring failures never intentionally block mail delivery.
 - **Server-trusted context**: AI Compose and reply context are fetched server-side, never trusted from the client.
+- **Constrained egress**: AI unsubscribe can submit only a validated form to a related public HTTPS host; arbitrary model-selected requests are rejected.
 - **Bounded automation**: AI never sends or deletes mail. Only a spam verdict at or above `0.98` changes folder placement automatically; each label's `auto_apply` setting independently controls whether AI may apply it.
 - **Rate limits**: `0039_api_rate_limits.sql` gives AI and enricher requests durable, per-user Postgres counters shared across serverless instances — see [Data model](/data-model#rate-limits).
 - **Sanitised error reporting**: `mail-app-ingest` reports failures to Sentry without email or model content (`sentry.js`).

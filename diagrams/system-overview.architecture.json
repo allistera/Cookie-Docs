@@ -16,7 +16,7 @@
           "workers_api",
           "db"
         ],
-        "note": "Both clients call the Vercel API; the browser also reaches four Workers cross-origin."
+        "note": "The browser reaches ten Worker APIs cross-origin and retains Vercel send compatibility."
       },
       {
         "id": "worker-processing",
@@ -40,7 +40,7 @@
           "crons",
           "db"
         ],
-        "note": "Both runtimes coordinate purely through the Postgres schema owned by Cookie-Web."
+        "note": "The runtimes share Cookie-Web's Postgres schema plus two narrow Worker service bindings."
       }
     ]
   },
@@ -91,8 +91,8 @@
     {
       "id": "api",
       "type": "backend",
-      "label": "Cookie-Web API",
-      "sublabel": "7 Vercel Functions",
+      "label": "Legacy send API",
+      "sublabel": "Vercel /api/send",
       "brand": "vercel",
       "pos": [
         400,
@@ -107,7 +107,7 @@
       "id": "workers_api",
       "type": "backend",
       "label": "cookie-web-* Workers",
-      "sublabel": "labels, messages, tasks, search",
+      "sublabel": "10 browser/API services",
       "brand": "cloudflare",
       "pos": [
         400,
@@ -195,7 +195,7 @@
       "id": "ios-api",
       "from": "ios",
       "to": "api",
-      "label": "same API + token"
+      "label": "legacy + Worker APIs"
     },
     {
       "id": "web-workers",
@@ -241,29 +241,9 @@
     {
       "id": "flusher-api",
       "from": "crons",
-      "to": "api",
-      "label": "flush scheduled sends",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "right",
-      "via": [
-        [
-          490,
-          596
-        ],
-        [
-          1170,
-          596
-        ],
-        [
-          1170,
-          112
-        ]
-      ],
-      "labelAt": [
-        800,
-        596
-      ]
+      "to": "workers_api",
+      "label": "flush through service binding",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -271,17 +251,17 @@
       "dot": "cyan",
       "title": "Ownership",
       "items": [
-        "Cookie-Web owns the schema and the Vercel API",
-        "Cookie-Worker owns everything outside a request/response cycle",
-        "Cookie-iOS is a pure client of the Cookie-Web API"
+        "Cookie-Web owns the schema and Vercel SPA",
+        "Cookie-Worker owns ten API and three background Workers",
+        "Cookie-iOS is a client with no server-side state"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Shared state, not shared code",
+      "title": "Shared state + narrow bindings",
       "items": [
-        "No RPC or shared library between the two runtimes",
-        "Both halves coordinate only through the Postgres schema",
+        "Most coordination runs through the Postgres schema",
+        "Two Worker-to-Worker service bindings trigger internal work",
         "Workers reach Postgres through Hyperdrive"
       ]
     },

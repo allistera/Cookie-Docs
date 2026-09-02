@@ -5,12 +5,14 @@ description: The static Blume documentation site that explains the complete Cook
 
 Cookie-Docs is the documentation component for the whole Cookie system. It owns no application runtime, API, database schema, or user data; its job is to keep the architecture, component responsibilities, data model, AI behavior, and operating procedures understandable in one place.
 
-The site is written in MDX, built with Blume, and uses Mermaid for diagrams that remain versioned with the prose. It is published as a static site at [allistera.github.io/Cookie-Docs](https://allistera.github.io/Cookie-Docs/).
+The site is written in MDX and built with Blume. Architecture diagrams are stored as versioned Archify JSON sources in `diagrams/`, with their standalone HTML exports checked into `public/diagrams/` and embedded from the relevant pages. It is published as a static site at [allistera.github.io/Cookie-Docs](https://allistera.github.io/Cookie-Docs/).
 
 ## Source and validation
 
 ```text
 docs/                 MDX pages grouped by system concern
+diagrams/              Editable Archify diagram sources
+public/diagrams/       Standalone HTML diagram exports
 blume.config.ts       site title and GitHub Pages base path
 .github/workflows/    build and GitHub Pages deployment
 ```
@@ -20,8 +22,9 @@ Run the documentation locally and validate a change with:
 ```sh
 npm install
 npm run dev
+npm run format:check
 npm run doctor
 npm run build
 ```
 
-`blume doctor` checks the content structure; the production build renders every page, Mermaid diagram, search index, sitemap, machine-readable page, and social image. Pushes to `main` build and deploy the static output to GitHub Pages.
+`blume doctor` checks the content structure; the production build renders every page, embedded diagram, search index, sitemap, machine-readable page, and social image. When an architecture changes, update both the JSON source and its exported HTML. Pushes to `main` check formatting, build the site, and deploy the static output to GitHub Pages.

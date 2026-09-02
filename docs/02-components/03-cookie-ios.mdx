@@ -1,77 +1,62 @@
 ---
 title: Cookie-iOS
-description: The native SwiftUI client — "Cards & Stacks" design — that calls the same Cookie-Web API as the browser app.
+description: The native SwiftUI client for Email, Calendar, and Notes, authenticated with Auth0 and backed by Cookie's web and Worker APIs.
 ---
 
-Cookie-iOS is the native SwiftUI implementation of Cookie's **"Cards & Stacks"** design: a swipeable-card inbox, an AI-summarized reading view, and an AI compose sheet. It authenticates with Auth0 and calls the [Cookie-Web API](/components/cookie-web#api-surface) for the inbox, AI compose, new messages, and threaded replies — it holds no server-side logic or database of its own. Protocol-backed mocks keep the UI previewable and testable without a live backend.
+Cookie-iOS is the native SwiftUI client for Cookie. Its authenticated shell switches among **Email**, **Calendar**, and **Notes**; it owns no server-side logic or database. The project targets iOS 17, uses Swift 6 strict concurrency, and is generated from `project.yml` with XcodeGen.
 
 ## Layout
 
 <FileTree>
 
-- Cookie/
-  - CookieApp.swift — app entry point
-  - Auth/ — Auth0Config, AuthenticatedUser, AuthService, LoginView
-  - DesignSystem/ — theme tokens, CookieMark logo, SparkleIcon, BrandAvatar
-  - Models/ — Email, tags, filters, sample fixtures
-  - Services/ — AIService / ComposeService / MailService protocols and their mocks
-  - State/ — `@Observable` InboxStore, AccountStore
-  - Features/
-    - Inbox/ — InboxView, cards, filter chips, swipe actions, FAB
-    - Reading/ — ReadingView: summary card, thread history, reply bar
-    - Compose/ — ComposeView + ComposeModel (AI draft generation)
-- CookieTests/ — unit tests (inbox filtering/swipe invariants, compose state machine)
-- Scripts/capture-screens.sh — fidelity screenshot capture
-- project.yml — XcodeGen project definition
+- Cookie/Sources/
+  - App/ — application entry point
+  - Auth/ — Auth0 session and login state
+  - Models/ — mail, contacts, documents, rich text, and JSON models
+  - Networking/ — email, message, search, send, calendar, document, and contact clients
+  - Views/ — inbox, message detail/body, compose, calendar, notes tree/editor, rich-text editor
+  - Info.plist — Auth0 callback configuration
+- Cookie/Resources/ — app icon and colour assets
+- CookieTests/ — networking, navigation, mail actions, search, compose, rich text, documents, and calendar tests
+- project.yml — XcodeGen source of truth and Auth0.swift dependency
 
 </FileTree>
 
-## Services
+## Shipped screens
 
-| Service | Responsibility |
+- **Email** — paginated inbox, category filters, pull to refresh, debounced keyword type-ahead, explicit hybrid search, message detail, attachment/body loading, Done actions, and a full-screen composer.
+- **Reading** — sanitized HTML in a bounded web view; remote images are blocked by default and can be loaded explicitly. Reply opens the composer with the message context.
+- **Compose** — contact suggestions, rich-text body, new mail/reply sending, and explicit success feedback.
+- **Calendar** — lists calendars/events and turns natural-language text into a reviewable event draft before creating it.
+- **Notes** — hierarchical document/folder browser and block-aware editor for supported rich-text rows; unsupported table/image/Kanban/Excalidraw blocks remain identifiable rather than being silently discarded.
+
+## API clients
+
+| Client | Current endpoint family |
 | --- | --- |
-| `APIClient` / `APIConfig` | HTTP client and endpoint configuration for the Cookie-Web API |
-| `RemoteMailService` | Live `MailService` implementation backed by `APIClient` |
-| `MailService` (protocol) | Inbox, reading, and compose data access — mocked for tests/previews |
-| `AIService` | Thread summaries and semantic search |
-| `ComposeService` | AI compose draft generation (`/api/compose`) |
-| `ContactService` | Compose recipient suggestions (`/api/messages?resource=contacts`) |
-| `NotificationService` | Local notification handling for new-mail alerts |
+| `MessagesAPI` / `ContactsAPI` | `messages-api.infinitywave.online` Worker |
+| `DocumentsAPI` | `tasks-api.infinitywave.online` Worker |
+| `SendAPI` | Vercel compatibility `/api/send` |
+| `EmailsAPI` / `SearchAPI` / `CalendarEventsAPI` | legacy `mail.infinitywave.online/api/*` paths |
 
-## Screens
+:::warning
+The backend migrations moved emails, search, and calendar APIs to `emails-api`, `search-api`, and `calendar-api`, but the current iOS source still targets their former Vercel paths. The table above documents the implementation as it exists; those clients need a coordinated application change before the iOS app fully matches the current Worker topology.
+:::
 
-- **Inbox** — header, semantic search field, filter chips, and a vertical stack of email cards. Unread mail carries a 4px coral bar; cards with a thread summary show a violet "Cookie summary" strip.
-- **Reading** — subject, tag chips, an AI **Cookie summary** card (bulleted, violet-tinted), thread history, an unsubscribe prompt when detected, the sanitized message body with attachments, and a sticky reply bar with an inline AI **Draft** button.
-- **Compose** — To/Subject fields, an AI prompt bar ("Generated by Cookie" + Regenerate), the generated draft body, and two adjust actions ("Make shorter", "Adjust tone").
-- **Swipe actions** — left-swipe reveals **Snooze** and **Done** (Archive was intentionally removed).
+Auth0 access tokens use the same Cookie API audience as the web app. Focused unit tests keep response contracts independently testable.
 
-These map to the same AI backend as the web app's generate/summarize/search endpoints — see [AI features](/ai-features).
+## Build and test
 
-## Build & run
-
-Requires Xcode with an iOS 17+ simulator, plus XcodeGen and SwiftLint:
+Requires macOS with Xcode, XcodeGen, and SwiftLint:
 
 ```sh
 brew install xcodegen swiftlint
 xcodegen generate
-open Cookie.xcodeproj
-```
-
-Run the **Cookie** scheme (⌘R), or from the CLI:
-
-```sh
-xcodebuild -project Cookie.xcodeproj -scheme Cookie \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' build
-```
-
-Regenerate the Xcode project with `xcodegen generate` after adding, removing, or moving source files — `project.yml` is the source of truth.
-
-## Tests and linting
-
-```sh
 xcodebuild -project Cookie.xcodeproj -scheme Cookie \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' test
 swiftlint --strict
 ```
 
-SwiftLint also runs as an Xcode build phase; `--strict` is the check required before committing.
+Regenerate the Xcode project after adding, moving, or removing sources. `project.yml` pins Auth0.swift from `3.1.0` and is the project-definition source of truth.
+
+Cookie-iOS currently has no checked-in GitHub Actions workflow or automated deployment; validation and distribution are local/Xcode responsibilities.
