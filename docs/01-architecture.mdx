@@ -50,7 +50,7 @@ same Supabase database.
 
 | Runtime | Provider | What it serves |
 | --- | --- | --- |
-| Static SPA + legacy send | **Vercel** | `mail.infinitywave.online` — the Vue app and `/api/send`, still used by the current web and iOS clients |
+| Static SPA + legacy send | **Vercel** | `mail.infinitywave.online` — the Vue app and `/api/send`, still used by the current web client |
 | Private Blob storage | **Vercel** | Attachment bytes written by `mail-app-ingest` |
 | `cookie-web-ai` | **Cloudflare** | `ai-api.infinitywave.online` — compose and thread summaries |
 | `cookie-web-calendar` | **Cloudflare** | `calendar-api.infinitywave.online` — calendars, events, ICS sync, and natural-language event drafts |
@@ -60,7 +60,7 @@ same Supabase database.
 | `cookie-web-notifications` | **Cloudflare** | `notifications-api.infinitywave.online` — browser-notification event claim/ack |
 | `cookie-web-receipts` | **Cloudflare** | `receipts-api.infinitywave.online` — tracking pixel and authenticated receipt status |
 | `cookie-web-search` | **Cloudflare** | `search-api.infinitywave.online` — federated hybrid search and mailbox Q&A |
-| `cookie-web-send` | **Cloudflare** | `send-api.infinitywave.online` — outbound/scheduled delivery; currently used by the flusher service binding while web/iOS retain Vercel compatibility calls |
+| `cookie-web-send` | **Cloudflare** | `send-api.infinitywave.online` — outbound/scheduled delivery; used by Cookie-iOS and the flusher service binding while Cookie-Web retains its Vercel compatibility call |
 | `cookie-web-tasks` | **Cloudflare** | `tasks-api.infinitywave.online` — AI Today, Tasks, projects, and Documents |
 | `mail-app-ingest` | **Cloudflare** | Email Worker on inbound mail (+ a 15-minute recovery cron) |
 | `data-enricher` | **Cloudflare** | Cron at 05:00 UTC, plus on-demand `POST /run` |
@@ -147,11 +147,12 @@ Forwarding to the real mailbox is the primary outcome — storage, attachment up
 
 ### 2. Interactive app traffic
 
-The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0. The browser calls the ten Cloudflare API Workers cross-origin and still uses Vercel's compatibility send route; the current iOS build uses a mix of Worker endpoints and legacy Vercel paths:
+The browser and iOS app never talk to Postgres directly. Both authenticate with Auth0 and call the Cloudflare APIs; Cookie-iOS uses the current Worker origins and clean route paths throughout, while the browser still uses Vercel's compatibility send route:
 
 ```mermaid
 flowchart TB
-    Login["Cookie-Web or Cookie-iOS<br/>logs in with Auth0"]
+    Web["Cookie-Web<br/>logs in with Auth0"]
+    IOS["Cookie-iOS<br/>logs in with Auth0"]
 
     subgraph Vercel["Vercel"]
         API["Cookie-Web compatibility API<br/>/api/send"]
@@ -163,8 +164,9 @@ flowchart TB
 
     Services["Supabase · data<br/>Meilisearch · search<br/>OpenAI · AI features<br/>Resend · outbound mail"]
 
-    Login --> API
-    Login -- "CORS, custom domains" --> Workers
+    Web --> API
+    Web -- "CORS, custom domains" --> Workers
+    IOS -- "current Worker APIs" --> Workers
     API --> Services
     Workers --> Services
 ```

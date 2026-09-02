@@ -254,10 +254,10 @@
       "variant": "security"
     },
     {
-      "id": "ios-api",
+      "id": "ios-workers",
       "from": "ios",
-      "to": "api",
-      "label": "legacy + Worker APIs"
+      "to": "labels",
+      "label": "current Worker APIs"
     },
     {
       "id": "web-api",

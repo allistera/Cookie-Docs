@@ -13,7 +13,7 @@ Cookie-iOS is the native SwiftUI client for Cookie. Its authenticated shell swit
   - App/ — application entry point
   - Auth/ — Auth0 session and login state
   - Models/ — mail, contacts, documents, rich text, and JSON models
-  - Networking/ — email, message, search, send, calendar, document, and contact clients
+  - Networking/ — canonical Worker endpoints plus email, message, search, send, calendar, document, and contact clients
   - Views/ — inbox, message detail/body, compose, calendar, notes tree/editor, rich-text editor
   - Info.plist — Auth0 callback configuration
 - Cookie/Resources/ — app icon and colour assets
@@ -36,12 +36,12 @@ Cookie-iOS is the native SwiftUI client for Cookie. Its authenticated shell swit
 | --- | --- |
 | `MessagesAPI` / `ContactsAPI` | `messages-api.infinitywave.online` Worker |
 | `DocumentsAPI` | `tasks-api.infinitywave.online` Worker |
-| `SendAPI` | Vercel compatibility `/api/send` |
-| `EmailsAPI` / `SearchAPI` / `CalendarEventsAPI` | legacy `mail.infinitywave.online/api/*` paths |
+| `SendAPI` | `send-api.infinitywave.online/send` Worker |
+| `EmailsAPI` | `emails-api.infinitywave.online/emails` Worker |
+| `SearchAPI` | `search-api.infinitywave.online/search` Worker |
+| `CalendarEventsAPI` | `calendar-api.infinitywave.online` Worker routes: `/calendar-events` and `/calendars` |
 
-:::warning
-The backend migrations moved emails, search, and calendar APIs to `emails-api`, `search-api`, and `calendar-api`, but the current iOS source still targets their former Vercel paths. The table above documents the implementation as it exists; those clients need a coordinated application change before the iOS app fully matches the current Worker topology.
-:::
+All production URLs live in `CookieAPIEndpoints.swift`, and a contract test pins every origin and clean route path so future backend migrations cannot leave one client on a legacy endpoint unnoticed.
 
 Auth0 access tokens use the same Cookie API audience as the web app. Focused unit tests keep response contracts independently testable.
 
@@ -59,4 +59,4 @@ swiftlint --strict
 
 Regenerate the Xcode project after adding, moving, or removing sources. `project.yml` pins Auth0.swift from `3.1.0` and is the project-definition source of truth.
 
-Cookie-iOS currently has no checked-in GitHub Actions workflow or automated deployment; validation and distribution are local/Xcode responsibilities.
+Pushes and pull requests to `main` generate the project and run the unit-test bundle against an available iPhone Simulator on a macOS GitHub Actions runner. Distribution remains a local/Xcode responsibility.

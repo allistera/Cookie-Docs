@@ -7,7 +7,7 @@ Cookie is a private, AI-assisted productivity suite. Four repositories make up t
 
 - **[Cookie-Web](/components/cookie-web)** — the Vue 3 browser app, legacy Vercel send endpoint, and owner of the shared mail-app schema. The production app runs at [mail.infinitywave.online](https://mail.infinitywave.online).
 - **[Cookie-Worker](/components/cookie-worker)** — ten browser-facing APIs plus three background Cloudflare Workers for inbound mail, AI enrichment, and scheduled sends.
-- **[Cookie-iOS](/components/cookie-ios)** — a native SwiftUI client ("Cards & Stacks" design) that talks to the same Cookie-Web API as the browser app.
+- **[Cookie-iOS](/components/cookie-ios)** — a native SwiftUI client ("Cards & Stacks" design) that calls the shared Cloudflare Worker APIs directly.
 - **[Cookie-Docs](/components/cookie-docs)** — this Blume/MDX site, deployed to GitHub Pages; it documents the system but owns no runtime or user data.
 - **[Cookie-Agents](/components/cookie-agents)** — a separate Render-hosted FastAPI service that collects Gmail and live Todoist data into its own PostgreSQL database. It is not on the Cookie mail application's request path and does not share its Supabase schema.
 

@@ -5037,7 +5037,7 @@
         <!-- Connection paths (before components for correct z-order) -->
         <path data-edge-from="ios" data-edge-to="auth0" data-edge-key="0" data-edge-id="ios-login" data-composition-points="125,104;125,156" d="M 125 104 L 125 156" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
         <path data-edge-from="web" data-edge-to="auth0" data-edge-key="1" data-edge-id="web-login" data-composition-points="125,280;125,220" d="M 125 280 L 125 220" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="ios" data-edge-to="api" data-edge-label="legacy + Worker APIs" data-edge-key="2" data-edge-id="ios-api" data-composition-points="210,85;420,85" d="M 210 85 L 420 85" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="ios" data-edge-to="labels" data-edge-label="current Worker APIs" data-edge-key="2" data-edge-id="ios-workers" data-composition-points="210,85;315,85;315,192;420,192" d="M 210 85 L 307 85 Q 315 85 315 93 L 315 184 Q 315 192 323 192 L 420 192" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="web" data-edge-to="api" data-edge-label="bearer token" data-edge-key="3" data-edge-id="web-api" data-composition-points="210,296;315,296;315,99;420,99" d="M 210 296 L 307 296 Q 315 296 315 288 L 315 107 Q 315 99 323 99 L 420 99" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="web" data-edge-to="labels" data-edge-key="4" data-edge-id="web-labels" data-composition-points="210,304;315,304;315,208;420,208" d="M 210 304 L 307 304 Q 315 304 315 296 L 315 216 Q 315 208 323 208 L 420 208" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="web" data-edge-to="messages" data-edge-key="5" data-edge-id="web-messages" data-composition-points="210,312;420,312" d="M 210 312 L 420 312" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
@@ -5234,9 +5234,9 @@
         <!-- Connection labels -->
 
 
-        <g data-detail="context" data-edge-from="ios" data-edge-to="api" data-edge-label="legacy + Worker APIs" data-edge-key="2" data-edge-id="ios-api">
-          <rect x="271.6" y="65" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="315" y="75" class="t-muted" font-size="8" text-anchor="middle">legacy + Worker APIs</text>
+        <g data-detail="context" data-edge-from="ios" data-edge-to="labels" data-edge-label="current Worker APIs" data-edge-key="2" data-edge-id="ios-workers">
+          <rect x="273.2" y="128.5" width="83.6" height="14" rx="3" class="c-mask"/>
+          <text x="315" y="138.5" class="t-muted" font-size="8" text-anchor="middle">current Worker APIs</text>
         </g>
         <g data-detail="context" data-edge-from="web" data-edge-to="api" data-edge-label="bearer token" data-edge-key="3" data-edge-id="web-api">
           <rect x="281.2" y="177.5" width="67.6" height="14" rx="3" class="c-mask"/>

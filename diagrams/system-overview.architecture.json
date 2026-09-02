@@ -16,7 +16,7 @@
           "workers_api",
           "db"
         ],
-        "note": "The browser reaches ten Worker APIs cross-origin and retains Vercel send compatibility."
+        "note": "Both clients use the Worker APIs; the browser alone retains Vercel send compatibility."
       },
       {
         "id": "worker-processing",
@@ -192,10 +192,10 @@
       "variant": "emphasis"
     },
     {
-      "id": "ios-api",
+      "id": "ios-workers",
       "from": "ios",
-      "to": "api",
-      "label": "legacy + Worker APIs"
+      "to": "workers_api",
+      "label": "current Worker APIs"
     },
     {
       "id": "web-workers",
