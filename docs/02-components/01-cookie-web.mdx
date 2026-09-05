@@ -3,7 +3,7 @@ title: Cookie-Web
 description: The Vue 3 browser application, legacy Vercel send endpoint, and owner of Cookie's shared mail-app database schema.
 ---
 
-Cookie-Web is Cookie's browser client and the owner of the [shared Supabase schema](/data-model). The SPA is deployed at [mail.infinitywave.online](https://mail.infinitywave.online). Its browser-facing APIs have moved almost entirely to the `cookie-web-*` Cloudflare Workers in Cookie-Worker; this repository retains `api/send.js` as a compatibility endpoint used by the current web client.
+Cookie-Web is Cookie's browser client and the owner of the [shared Supabase schema](/data-model). The SPA is deployed at [mail.infinitywave.online](https://mail.infinitywave.online). Its browser-facing APIs have moved almost entirely to the `cookie-web-*` Cloudflare Workers in Cookie-Worker; this repository retains `api/send.js` as a compatibility endpoint used by the current web client. Delivery, retries, and reminders are forwarded to the send Worker; attachment upload authorization and registration remain on Vercel.
 
 ## Technology
 
@@ -102,12 +102,11 @@ npm run test:e2e
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Supabase Postgres connection for the Vercel send route and migrations |
-| `RESEND_API_KEY` / `EMAIL_FROM` | Outbound delivery through the legacy Vercel compatibility path |
-| `SCHEDULED_SEND_FLUSH_TOKEN` | Protects Vercel's legacy flush path; the Cloudflare send Worker uses the matching flusher secret for `/send/flush` |
-| `PUBLIC_APP_URL` | Public origin used when constructing read-receipt pixels |
+| `DATABASE_URL` | Supabase Postgres connection for migrations and local fixture tooling |
 | `VITE_AUTH0_DOMAIN` / `VITE_AUTH0_CLIENT_ID` / `VITE_AUTH0_AUDIENCE` | Browser Auth0 configuration |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Content-free Realtime inbox pings |
+
+The `/api/send` adapter forwards bearer-authenticated requests to the fixed send Worker origin. Delivery credentials, quotas, reminder validation, tracking pixels, and sent-copy persistence are owned by Cookie-Worker. A failed client send preserves its request ID for retry; a confirmed send releases it so identical new mail can be sent intentionally.
 
 The Worker API origins are public constants in `src/lib/apiWorkers.js`, not environment secrets.
 

@@ -73,6 +73,12 @@ Cookie-Worker deploy validation always checks the whole repository before publis
 
 Cookie-Worker's `RUNBOOK.md` contains the detailed production, search-repair, rotation, incident, and rollback checklists.
 
+### September review fixes
+
+Deploy `cookie-web-send` with follow-up support **before** the Cookie-Web compatibility adapter. Apply Cookie-Web migration `0065_task_subtree_projects.sql` to repair children left in old projects and index parent lookups. The updated tasks Worker moves each complete subtree in a transaction and serializes structural changes per owner. Deploy it promptly with the repair so older handlers cannot recreate the inconsistency.
+
+Run the search drift repair after deploying the indexing changes; older incorrectly stamped rows may require a one-time full reindex. Calendar schema fallbacks remain supported until every deployment is verified beyond migrations 0024–0027. Removing those branches is conditional on that inventory, not on the presence of migration files in the repository.
+
 ## Search operations
 
 - `Search Reindex` rebuilds the Meilisearch indexes from owned Postgres rows and configures the OpenAI embedder used by Meilisearch.
@@ -90,7 +96,7 @@ Two cross-Worker pairs must agree:
 - `cookie-web-tasks` → `data-enricher`: service binding plus matching trigger token.
 - `scheduled-send-flusher` → `cookie-web-send`: `SEND` service binding plus matching flush bearer secret.
 
-Vercel separately holds Cookie-Web's compatibility-send and migration settings. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
+Vercel holds Cookie-Web's browser build and migration settings; the compatibility send adapter forwards delivery to the Worker. Attachment uploads remain on Vercel and require Blob storage, database, and authentication settings. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
 
 ## Local-development safety
 

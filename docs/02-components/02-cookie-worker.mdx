@@ -53,7 +53,7 @@ Forwarding is primary. Parsing above 10 MiB, optional storage/indexing, AI, atta
 
 ## Search and drift repair
 
-Meilisearch owns keyword/semantic ranking for three indexes: `messages`, `documents`, and `tasks`. Writes attempt a best-effort sync and stamp `search_indexed_at` only after the index accepts the row. Failed or superseded writes leave the watermark stale; manual reindex and drift-repair workflows reconcile those rows later.
+Meilisearch owns keyword/semantic ranking for three indexes: `messages`, `documents`, and `tasks`. Writes attempt a best-effort sync and stamp `search_indexed_at` only after the Meilisearch task finishes successfully. Monitoring is bounded to 20 seconds per task. Document/task handlers schedule this work after saving, using a separate database connection, and stamp only the row version that was indexed. Failed or superseded writes leave the watermark stale; manual reindex and drift-repair workflows reconcile those rows later.
 
 `GET /search` without `scope` keeps the mail-only response used by existing clients. `scope=all|mail|documents|tasks` returns a federated response for Cookie-Web's unified search page. Subtask text is folded into its top-level task's search document. `POST /ask` remains owner-scoped mailbox retrieval plus an OpenAI answer with sources.
 

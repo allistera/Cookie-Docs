@@ -45,6 +45,12 @@ All production URLs live in `CookieAPIEndpoints.swift`, and a contract test pins
 
 Auth0 access tokens use the same Cookie API audience as the web app. Focused unit tests keep response contracts independently testable.
 
+## Inbox and note persistence
+
+The inbox keeps the server's pagination cursor, appends unique messages as more rows are requested, and discards responses superseded by a refresh. Category filters therefore remain usable beyond the first 50 messages.
+
+Notes use one save coordinator for autosave, Retry, and the Notes back button. It retains the newest full draft after failures and waits for earlier writes before using their returned version. A failed save keeps the editor open; conflicts can be saved as a separate copy. Pending drafts are kept in memory, so they do not survive process termination.
+
 ## Build and test
 
 Requires macOS with Xcode, XcodeGen, and SwiftLint:
