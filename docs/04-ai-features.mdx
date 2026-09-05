@@ -39,9 +39,11 @@ flowchart TB
 
 ### 1. Store first, with deterministic rules
 
-`mail-app-ingest` parses the message and stores it idempotently through Hyperdrive. The same database transaction creates a durable `message_ai` row with `status = 'pending'` and evaluates the user's enabled label rules.
+`mail-app-ingest` parses the message and stores it idempotently through Hyperdrive. The same database transaction creates a durable `message_ai` row with `status = 'pending'` and evaluates the user's enabled conditions rules.
 
-Rules are deliberately separate from AI: they compare `subject`, `body`, `from`, or `to` using exact `contains`, `equals`, `starts_with`, or `ends_with` conditions. A matching rule writes a label with `source = 'rule'`; because this happens inside the storage transaction, there is no confidence threshold or recovery job.
+Conditions rules are deliberately separate from AI: they compare `subject`, `body`, `from`, or `to` using exact `contains`, `equals`, `starts_with`, or `ends_with` conditions. A matching rule writes a label with `source = 'rule'` (or marks the message done); because this happens inside the storage transaction, there is no confidence threshold or recovery job.
+
+A rule can instead be defined by a plain-language prompt (`label_rules.kind = 'ai'`, migration `0068`), such as "receipts and order confirmations from online shops". Those prompts are not evaluated here: the classifier in step 3 receives them alongside the auto-tag labels and reports which rules the message matches, with the same 0.70 confidence bar. A matched AI rule applies its label with `source = 'ai'` and `rule_id` provenance, or marks the message done.
 
 The original email is then forwarded to the real mailbox. Delivery is the primary outcome: storage, attachment upload, AI, and monitoring failures never intentionally make the model a dependency of forwarding.
 
@@ -84,6 +86,8 @@ Recovery never re-forwards a message and never changes the fact that it was deli
 ### 5. User controls and current limits
 
 In **Settings → Labels**, the user can enable or disable Auto-tag independently for each user label. Descriptions help the classifier distinguish similarly named labels, while manual labels and deterministic rules remain available when Auto-tag is disabled.
+
+In **Settings → Rules**, a rule's matcher is either conditions or a Cookie AI prompt ("Match by"). Prompt rules describe the mail in plain language and can apply a label or mark mail done; they run with AI auto-tagging rather than at storage time, so they inherit its confidence threshold and retry sweep.
 
 Spam is stored, not deleted, and the high threshold deliberately favours false negatives over hiding legitimate newsletters or receipts. There is not yet a **Not spam** feedback action, sender allow-list, or training loop; those are not implied by the AI Inbox label.
 
