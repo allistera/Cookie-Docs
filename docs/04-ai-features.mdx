@@ -117,7 +117,7 @@ Built by `data-enricher` and read through `cookie-web-tasks`'s `GET /tasks`:
 
 - **Suggested to-dos** — Cookie's own Tasks due today or overdue (the same `task_items` the Tasks app edits, served by `cookie-web-tasks`) plus AI-extracted action items from important mail, most-pressing first. Completing or rescheduling one here updates it in the Tasks app.
 - **Email triage** — recent Inbox mail divided into **Reply Needed**, **Review**, and **Noise**, rebuilt daily at 5 a.m. UTC.
-- **News round-up** — new GitHub repos and Product Hunt launches ranked against interests stored in `users.prefs` (edited in Settings → Personalisation), plus BBC UK headlines, which are never filtered.
+- **News round-up** — new GitHub repos and Product Hunt launches ranked against interests stored in `users.prefs` (edited in Settings → Personalisation), plus an unfiltered ten-story headline list with up to three recent West Lothian stories from Edinburgh Live and the remaining places filled by BBC UK.
 
 `POST /tasks/refresh` calls `data-enricher`'s `POST /run?phase=today` over the `ENRICHER` service binding, carrying the shared trigger token and enforcing the configured owner before the rebuild.
 
