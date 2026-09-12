@@ -17,7 +17,7 @@
     "prettier": "3.9.6"
   },
   "overrides": {
-    "astro": "^7.2.4",
+    "astro": "^7.3.2",
     "@vercel/routing-utils": {
       "path-to-regexp": "6.3.0"
     }
