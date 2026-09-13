@@ -81,6 +81,12 @@ Cookie's Tasks app stores user-authored work separately from the overnight enric
 
 The header search is available across applications and routes to `/search`. `cookie-web-search` federates Meilisearch results from the `messages`, `documents`, and `tasks` indexes, then hydrates owned rows from Postgres. Scope tabs can restrict results to mail, documents, or tasks. Mailbox Q&A remains mail-only.
 
+## Document editing and bounded lists
+
+Plain tables use a lightweight editable grid with row and column controls; **Open spreadsheet** activates formulas and advanced tools. Existing formula tables and workbook snapshots keep the full spreadsheet editor. Offscreen rich editors retain their stored data until activation, and document blocks become interactive only after Editor.js has installed its change observer.
+
+Large mail and document lists render a bounded window, locating visible rows with binary search. Document/task pages are fetched incrementally. Task deep links load the full task before deciding whether it exists; network failures remain retryable. Creating an AI document completes its save without overriding navigation made while creation was pending.
+
 ## Local development
 
 ```sh

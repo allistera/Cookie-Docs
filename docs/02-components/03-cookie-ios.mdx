@@ -47,7 +47,7 @@ Auth0 access tokens use the same Cookie API audience as the web app. Focused uni
 
 ## Inbox and note persistence
 
-The inbox keeps the server's pagination cursor, appends unique messages as more rows are requested, and discards responses superseded by a refresh. Category filters therefore remain usable beyond the first 50 messages.
+The inbox keeps the server's pagination cursor, appends unique messages as more rows are requested, and discards responses superseded by a refresh. Loading another page requires a user action. Filters use the backend category names from loaded messages, including custom categories; mail without a category appears as Uncategorised. Selecting an empty category does not automatically scan the remaining mailbox.
 
 Notes use one save coordinator for autosave, Retry, and the Notes back button. It retains the newest full draft after failures and waits for earlier writes before using their returned version. A failed save keeps the editor open; conflicts can be saved as a separate copy. Pending drafts are kept in memory, so they do not survive process termination.
 
@@ -65,4 +65,4 @@ swiftlint --strict
 
 Regenerate the Xcode project after adding, moving, or removing sources. `project.yml` pins Auth0.swift from `3.1.0` and is the project-definition source of truth.
 
-Pushes and pull requests to `main` generate the project and run the unit-test bundle against an available iPhone Simulator on a macOS GitHub Actions runner. Distribution remains a local/Xcode responsibility.
+Pushes and pull requests to `main` generate the project and run the unit-test bundle against an available iPhone Simulator on a macOS GitHub Actions runner. After the lint and native test jobs pass on main, the TestFlight job archives and uploads using the configured signing credentials.
