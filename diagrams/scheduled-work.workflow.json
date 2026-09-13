@@ -16,18 +16,18 @@
           "resend",
           "db"
         ],
-        "note": "The flusher owns no mail-sending logic; Cookie-Web claims due rows and calls Resend."
+        "note": "The flusher owns no mail-sending logic; cookie-web-send claims due rows and calls Resend."
       },
       {
         "id": "daily-enrichment",
-        "label": "Daily enrichment",
+        "label": "Email triage",
         "focus": [
           "crondaily",
           "enricher",
           "openai",
           "db"
         ],
-        "note": "Task analysis, Inbox triage, and the news round-up, written to Postgres for AI Today."
+        "note": "Inbox triage only, written to Postgres for AI Today. News and task extraction do not run."
       }
     ],
     "legend": {
@@ -55,7 +55,7 @@
     },
     {
       "id": "enrichment",
-      "label": "Daily enrichment · 05:00 UTC"
+      "label": "Email triage · saved UK schedule"
     }
   ],
   "mainPath": [
@@ -134,7 +134,7 @@
       "lane": "enrichment",
       "col": 0,
       "type": "messagebus",
-      "label": "05:00 UTC cron",
+      "label": "Hourly cron",
       "sublabel": "+ on-demand POST /run",
       "width": 140
     },
@@ -144,7 +144,7 @@
       "col": 1,
       "type": "backend",
       "label": "data-enricher",
-      "sublabel": "Analysis, triage, news",
+      "sublabel": "Inbox triage only",
       "brand": "cloudflare",
       "width": 150
     },
@@ -154,7 +154,7 @@
       "col": 2,
       "type": "external",
       "label": "OpenAI",
-      "sublabel": "task analysis + triage",
+      "sublabel": "Reply / Review / Noise",
       "brand": "openai",
       "width": 150
     }
@@ -194,7 +194,7 @@
       "id": "model-work",
       "from": "enricher",
       "to": "openai",
-      "label": "analysis + news round-up"
+      "label": "inbox triage"
     },
     {
       "id": "write-results",
@@ -215,7 +215,7 @@
     },
     {
       "dot": "violet",
-      "title": "Daily enrichment",
+      "title": "Email triage",
       "items": [
         "Triages the last 24 hours of Inbox mail",
         "Results read by AI Today through the cookie-web-tasks Worker"

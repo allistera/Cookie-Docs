@@ -63,7 +63,7 @@ same Supabase database.
 | `cookie-web-send` | **Cloudflare** | `send-api.infinitywave.online` — outbound/scheduled delivery; used by Cookie-iOS and the flusher service binding while Cookie-Web retains its Vercel compatibility call |
 | `cookie-web-tasks` | **Cloudflare** | `tasks-api.infinitywave.online` — AI Today, Tasks, projects, and Documents |
 | `mail-app-ingest` | **Cloudflare** | Email Worker on inbound mail (+ a 15-minute recovery cron) |
-| `data-enricher` | **Cloudflare** | Cron at 05:00 UTC, plus on-demand `POST /run` |
+| `data-enricher` | **Cloudflare** | Hourly cron gated by the saved Europe/London schedule, plus on-demand `POST /run` |
 | `scheduled-send-flusher` | **Cloudflare** | Cron every 5 minutes |
 | Cookie-Agents API + database | **Render** | Separate Gmail/Todoist collector; not connected to the mail-app schema |
 
@@ -179,12 +179,12 @@ Both halves verify the token the same way: the verified Auth0 issuer + immutable
 
 Cloudflare cron triggers drive the work that has no human waiting on a response. Two of them do the work below; a third, `mail-app-ingest`'s 15-minute sweep, retries stale AI enrichment and is covered in the inbound-mail flow above.
 
-**Daily enrichment:**
+**Scheduled email triage:**
 
 ```mermaid
 flowchart TB
-    Inputs["05:00 UTC cron"] --> Enricher["data-enricher"]
-    Enricher --> Outputs["OpenAI analysis<br/>+ Supabase results"]
+    Inputs["Hourly cron + saved UK schedule"] --> Enricher["data-enricher"]
+    Enricher --> Outputs["OpenAI inbox triage<br/>+ Supabase results"]
 ```
 
 **Scheduled sending:**
@@ -197,7 +197,7 @@ flowchart TB
     API --> Resend[["Resend"]]
 ```
 
-- **`data-enricher`** runs daily at 05:00 UTC (plus on-demand via `POST /run`). It runs AI task analysis over important mail, triages the last 24 hours of Inbox mail, and assembles the personalised news round-up — all written to Postgres and read by Cookie-Web's AI Today page through the `cookie-web-tasks` Worker.
+- **`data-enricher`** runs inbox triage only, using an hourly cron gated by the owner-configured Europe/London schedule (default daily, 09:00–19:00 inclusive), plus on-demand `POST /run`. It triages the last 24 hours of Inbox mail and stores the result in Postgres for AI Today through `cookie-web-tasks`. News generation and per-email task extraction are disabled; existing stored results remain readable.
 - **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /send/flush` on `cookie-web-send` over a Cloudflare service binding. It owns no mail-sending logic itself — `cookie-web-send` claims the due rows and calls Resend.
 
 See [Cookie-Worker → data-enricher and scheduled-send-flusher](/components/cookie-worker) for both.

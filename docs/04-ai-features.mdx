@@ -15,7 +15,7 @@ Cookie's AI features are deliberately narrow: each one assists a specific, famil
 | Reading-view summaries | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
 | Natural-language calendar drafts | `cookie-web-calendar` (Cookie-Worker) | OpenAI Responses API |
 | Link-only unsubscribe assistance | `cookie-web-messages` (Cookie-Worker) | OpenAI Responses API |
-| AI Today: task extraction, inbox triage, news | `data-enricher` (Cookie-Worker) | OpenAI Responses API |
+| AI Today: inbox triage | `data-enricher` (Cookie-Worker) | OpenAI Responses API |
 
 ## What “AI Inbox” means
 
@@ -25,7 +25,7 @@ AI Inbox is Cookie's normal mailbox with assistance layered around it — not a 
 | --- | --- | --- |
 | When mail arrives | Deterministic label rules, AI classification, spam scoring, and priority | Labels and Spam placement update; the message becomes available to search |
 | When the user asks | Search, mailbox Q&A, a thread summary, or AI Compose | A result or draft is returned to the authenticated client |
-| Daily or on refresh | AI Today enrichment | Important-email tasks, recent-inbox triage, and personalised news are stored for the AI Today page |
+| Saved schedule or on refresh | AI Today triage | Recent-inbox triage is stored for AI Today; news and task extraction do not run |
 
 ## What happens when mail arrives
 
@@ -73,7 +73,7 @@ Cookie-Worker does not write the model response directly. It applies determinist
 | A `spam` verdict below **0.80** | Treat as Inbox | No automatic move |
 | A `spam` verdict from **0.80** to below **0.98** | Store as internal `review` | Message remains in Inbox |
 | A `spam` verdict **≥ 0.98** | Confirm as Spam | Apply the system Spam label, hide from Inbox and unread counts, show under **More → Spam** |
-| `low` / `normal` / `high` priority | Store on `message_ai` | Recent high-priority mail can be selected for AI Today task extraction |
+| `low` / `normal` / `high` priority | Store on `message_ai` | Used for mailbox priority; AI Today no longer runs per-email task extraction |
 
 Every completed classification stores the provider, model, prompt version, processing time, spam reason, and label confidence. That provenance makes later prompt/model changes auditable. A retry deletes and rebuilds only AI-applied labels, so manual labels and deterministic rule results remain intact.
 
@@ -113,13 +113,13 @@ Generation never calls Resend. The user must explicitly review, edit, and send t
 
 ## AI Today
 
-Built by `data-enricher` and read through `cookie-web-tasks`'s `GET /tasks`:
+Read through `cookie-web-tasks`'s `GET /tasks`; only inbox triage is rebuilt by `data-enricher`:
 
-- **Suggested to-dos** — Cookie's own Tasks due today or overdue (the same `task_items` the Tasks app edits, served by `cookie-web-tasks`) plus AI-extracted action items from important mail, most-pressing first. Completing or rescheduling one here updates it in the Tasks app.
-- **Email triage** — recent Inbox mail divided into **Reply Needed**, **Review**, and **Noise**, rebuilt daily at 5 a.m. UTC.
-- **News round-up** — new GitHub repos and Product Hunt launches ranked against interests stored in `users.prefs` (edited in Settings → Personalisation), plus an unfiltered ten-story headline list with up to three recent West Lothian stories from Edinburgh Live and the remaining places filled by BBC UK.
+- **Suggested to-dos** — Cookie's own Tasks due today or overdue (the same `task_items` the Tasks app edits, served by `cookie-web-tasks`) plus previously extracted action items from important mail, most-pressing first. The enricher no longer extracts new tasks. Completing or rescheduling one here updates it in the Tasks app.
+- **Email triage** — recent Inbox mail divided into **Reply Needed**, **Review**, and **Noise**, rebuilt on the saved Europe/London schedule (default hourly, 09:00–19:00 daily) or on demand.
+- **News round-up** — existing stored snapshots remain readable. The enricher no longer fetches feeds, ranks news, or writes fresh news snapshots.
 
-`POST /tasks/refresh` calls `data-enricher`'s `POST /run?phase=today` over the `ENRICHER` service binding, carrying the shared trigger token and enforcing the configured owner before the rebuild.
+`POST /tasks/refresh` calls `data-enricher`'s `POST /run?phase=today` over the `ENRICHER` service binding, carrying the shared trigger token and enforcing the configured owner before the triage-only rebuild. The legacy `digest` alias and a request without a phase also run only triage. News and per-email task extraction are excluded from every trigger.
 
 ## Calendar interpretation
 

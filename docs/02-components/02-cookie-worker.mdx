@@ -22,7 +22,7 @@ Ten Workers serve Cookie's browser APIs on custom domains; three run from email 
 | `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, cancellation, follow-up state, and `/send/flush` |
 | `cookie-web-tasks` | HTTP + service binding | AI Today, Tasks/projects/subtasks, Documents, preferences, and enricher refresh |
 | `mail-app-ingest` | Email + 15-minute cron | inbound parse/store/forward, classification, indexing, and recovery |
-| `data-enricher` | 05:00 UTC cron + HTTP | task analysis, inbox triage, and personalised news |
+| `data-enricher` | Hourly cron + HTTP | inbox triage only |
 | `scheduled-send-flusher` | 5-minute cron | invokes `cookie-web-send` to flush due scheduled messages |
 
 The ten `cookie-web-*` APIs use custom `*-api.infinitywave.online` domains and keep `workers.dev` enabled for debugging. Their shared CORS policy permits the production SPA, localhost ports, and Vercel preview deployments. Auth0 bearer verification is shared through `shared/auth-jwt.js`; the receipt pixel and bearer-protected send flush are the deliberate authentication exceptions.
@@ -63,13 +63,11 @@ Meilisearch owns keyword/semantic ranking for three indexes: `messages`, `docume
 
 ## data-enricher
 
-At 05:00 UTC and on demand, `data-enricher` writes the AI Today view:
+`data-enricher` runs inbox triage only: Reply Needed / Review rows and Noise counts for the last 24 hours of Inbox mail, stored as `daily_digest` summaries. An hourly UTC cron checks the owner's saved Europe/London schedule (default every day, 09:00–19:00 inclusive). The saved model defaults to `gpt-5-nano`.
 
-- user-authored `task_items` due today or overdue, combined with email-derived action items;
-- Reply Needed / Review rows and Noise counts for the last 24 hours of Inbox mail;
-- GitHub and Product Hunt news ranked against stored interests, plus ten unfiltered headlines prioritising up to three recent West Lothian stories from Edinburgh Live before BBC UK.
+Authenticated `POST /run`, `POST /run?phase=today`, and the legacy `POST /run?phase=digest` all run the same triage phase. Manual refresh bypasses the schedule gate. `cookie-web-tasks` continues to call the `today` alias, so existing clients need no migration.
 
-GitHub and Product Hunt credentials are optional. Missing sources are skipped without preventing the remaining round-up.
+News fetching, news ranking, and per-email task extraction no longer run. Existing `daily_news` snapshots and extracted email tasks remain stored and readable through `GET /tasks`; no replacement news job is scheduled. GitHub and Product Hunt credentials are no longer needed by this worker. Incoming-message classification in `mail-app-ingest` remains a separate pipeline.
 
 ## Commands and validation
 
