@@ -12,6 +12,7 @@ Cookie's AI features are deliberately narrow: each one assists a specific, famil
 | Federated search (mail, documents & tasks) | `cookie-web-search` (Cookie-Worker) | Meilisearch hybrid/federated search |
 | Mailbox Q&A | `cookie-web-search` (Cookie-Worker) | OpenAI Responses API |
 | AI Compose | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
+| Document chat and editing | `cookie-web-ai` (Cookie-Worker) | GPT-5.6 Sol via OpenAI Responses API |
 | Reading-view summaries | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
 | Natural-language calendar drafts | `cookie-web-calendar` (Cookie-Worker) | OpenAI Responses API |
 | Link-only unsubscribe assistance | `cookie-web-messages` (Cookie-Worker) | OpenAI Responses API |
@@ -173,3 +174,29 @@ Triage is a view, not a mailbox mutation. It never sends, archives, or deletes a
 - **Bounded automation**: AI never sends or deletes mail. Only a spam verdict at or above `0.98` changes folder placement automatically; each label's `auto_apply` setting independently controls whether AI may apply it.
 - **Rate limits**: `0039_api_rate_limits.sql` gives AI and enricher requests durable, per-user Postgres counters shared across serverless instances — see [Data model](/data-model#rate-limits).
 - **Sanitised error reporting**: `mail-app-ingest` reports failures to Sentry without email or model content (`sentry.js`).
+
+
+## Document AI chat
+
+The **AI** button opens a right-hand conversation panel in Documents. Send a question or describe a change; each request includes the latest editor snapshot (including recent unsaved typing), the current instruction, and up to 12 recent conversation messages. From the document dashboard the same panel works without an attached document.
+
+```mermaid
+sequenceDiagram
+    participant Editor as Cookie-Web editor
+    participant AI as cookie-web-ai
+    participant DB as Postgres
+    participant Model as OpenAI
+    Editor->>AI: POST /document-chat (instruction, draft, history)
+    AI->>DB: Verify user and document ownership; enforce quota
+    AI->>Model: GPT-5.6 Sol, full draft, structured response
+    Model-->>AI: Reply and optional proposed changes
+    AI-->>Editor: Validated reply and preview
+    Note over Editor: User chooses Apply changes or Create document
+    Editor->>DB: Normal autosave through cookie-web-tasks
+```
+
+Document chat defaults to `gpt-5.6-sol` with medium reasoning, independently configurable through `OPENAI_DOCUMENT_CHAT_MODEL`. [OpenAI describes it as a flagship model for complex professional work with a 1,050,000-token context window and structured outputs](https://developers.openai.com/api/docs/models/gpt-5.6-sol). Cookie imposes smaller application limits: a 1 MiB request body, 250,000 document characters, 500 blocks, an 8,000-character instruction, a 90-second model deadline, and 16,000 output tokens. Oversized drafts and incomplete responses are rejected, not silently truncated.
+
+Questions return an answer; editing instructions return a proposed document with **Preview changes** and **Apply changes**. The server never writes the proposal itself. Before applying, the client checks that the document still matches the draft used for the request; a changed draft requires a new suggestion. Accepted edits use the existing autosave and conflict-recovery flow. With no document attached, **Create document** saves the proposal as a new page.
+
+Images, drawings, spreadsheets and other non-text blocks must be preserved exactly by references to the original blocks. Model-generated text is converted from escaped Markdown into supported Editor.js blocks. Linked files and image pixels are not fetched or visually analysed. The request uses OpenAI `store: false`; chat history is held in the browser view and cleared when changing documents. Failed requests keep the typed instruction available for retry.
