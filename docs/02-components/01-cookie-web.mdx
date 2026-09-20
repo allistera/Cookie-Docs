@@ -79,6 +79,8 @@ The Cloudflare routes use clean paths instead of the former Vercel `?resource=` 
 
 Cookie's Tasks app stores user-authored work separately from the overnight enricher's email-derived `tasks` rows. It supports a static Inbox, Today (including overdue work), nested projects, editable task details, completion, reassignment, due dates, Todoist-style priorities (P1 most urgent through P4 default, shown as coloured flags in the panel and coloured completion circles in the list), and subtasks through the task panel.
 
+Labels are managed from a Labels section in the Tasks sidebar: each has a colour, click one to list its tasks across projects, and rename or delete it everywhere at once. Tasks take labels from a chip picker that suggests existing ones; a new name typed as `@name` is registered with the default colour.
+
 The header search is available across applications and routes to `/search`. `cookie-web-search` federates Meilisearch results from the `messages`, `documents`, and `tasks` indexes, then hydrates owned rows from Postgres. Scope tabs can restrict results to mail, documents, or tasks. Mailbox Q&A remains mail-only.
 
 ## Document editing and bounded lists
