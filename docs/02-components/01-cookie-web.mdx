@@ -46,7 +46,7 @@ Every route requires Auth0 authentication, enforced by both the `App.vue` render
 | --- | --- | --- |
 | `/` | `AIInboxView` | AI Today: built-in tasks due/overdue, email triage, and personalised news |
 | `/inbox` | `TraditionalInboxView` | Classic inbox, labels, folders, search entry, and message actions |
-| `/calendar` | `CalendarView` | Calendars, events, recurrence, ICS subscriptions, and natural-language event creation |
+| `/calendar` | `CalendarView` | Calendars, events, recurrence, ICS subscriptions, natural-language event creation, and dated tasks shown on their due date |
 | `/scheduled` | `ScheduledSendsView` | Pending Send Later messages |
 | `/documents/:id?` | `DocumentsView` | Notes/documents editor with folders, templates, tags, tables, and export |
 | `/search` | `SearchResultsView` | Unified mail, documents, and tasks results |
@@ -77,7 +77,7 @@ The Cloudflare routes use clean paths instead of the former Vercel `?resource=` 
 
 ## Tasks and unified search
 
-Cookie's Tasks app stores user-authored work separately from the overnight enricher's email-derived `tasks` rows. It supports a static Inbox, Today (including overdue work), nested projects, editable task details, completion, reassignment, due dates, Todoist-style priorities (P1 most urgent through P4 default, shown as coloured flags in the panel and coloured completion circles in the list), and subtasks through the task panel.
+Cookie's Tasks app stores user-authored work separately from the overnight enricher's email-derived `tasks` rows. It supports a static Inbox, Today (including overdue work), nested projects, editable task details, completion, reassignment, due dates, Todoist-style priorities (P1 most urgent through P4 default, shown as coloured flags in the panel and coloured completion circles in the list), and subtasks through the task panel. A task with a due date also appears on Cookie Calendar on that day (an all-day item, or a thirty-minute slot at its due time), under a "Tasks" toggle in the calendar sidebar; clicking it opens the task in the Tasks app. The calendar reads them from the tasks worker's `GET /task-items?view=calendar&from=&to=` window (at most 100 days).
 
 Labels are managed from a Labels section in the Tasks sidebar and from Settings > Tasks > Task Labels: each has a colour and shows how many tasks carry it, click one in the sidebar to list its tasks across projects, drop a task onto it to tag the task, and rename or delete it everywhere at once. Tasks take labels from a chip picker that suggests existing ones; a new name typed as `@name` is registered with the default colour.
 
