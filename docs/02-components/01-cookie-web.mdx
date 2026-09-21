@@ -48,7 +48,8 @@ Every route requires Auth0 authentication, enforced by both the `App.vue` render
 | `/inbox` | `TraditionalInboxView` | Classic inbox, labels, folders, search entry, and message actions |
 | `/calendar` | `CalendarView` | Calendars, events, recurrence, ICS subscriptions, natural-language event creation, and dated tasks shown on their due date |
 | `/scheduled` | `ScheduledSendsView` | Pending Send Later messages |
-| `/documents/:id?` | `DocumentsView` | Notes/documents editor with folders, templates, tags, tables, and export |
+| `/documents/:id?` | `DocumentsView` | Folder browser (grid or list) over folders, documents, and uploaded files; notes editor with templates, tags, tables, and export |
+| `/documents/file/:fileId` | `DocumentsView` | Inline preview of an uploaded image or PDF, with download |
 | `/search` | `SearchResultsView` | Unified mail, documents, and tasks results |
 | `/tasks` | `TasksView` | Today/Inbox/project task lists, nested projects, detail panel, and subtasks |
 | `/settings/:section?` | `SettingsView` | Account, labels/rules, personalisation, calendars, and integration settings |
@@ -65,7 +66,7 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 | `ai-api` / `cookie-web-ai` | `POST /compose`, `POST /summarize` |
 | `calendar-api` / `cookie-web-calendar` | calendar/event CRUD, subscriptions, sync, and AI interpretation |
 | `search-api` / `cookie-web-search` | `GET /search` for mail or federated scopes; `POST /ask` for mailbox Q&A |
-| `tasks-api` / `cookie-web-tasks` | AI Today, task projects/items/subtasks, documents, preferences, and refresh |
+| `tasks-api` / `cookie-web-tasks` | AI Today, task projects/items/subtasks, documents, uploaded files (`/files`), preferences, and refresh |
 | `notifications-api` / `cookie-web-notifications` | `POST /notification-event` claim/ack |
 | `receipts-api` / `cookie-web-receipts` | authenticated status reads and the unauthenticated tracking pixel |
 | `send-api` / `cookie-web-send` | deployed Cloudflare send/schedule API; scheduled flusher calls `/send/flush` over a service binding |
@@ -82,6 +83,8 @@ Cookie's Tasks app stores user-authored work separately from the overnight enric
 Labels are managed from a Labels section in the Tasks sidebar and from Settings > Tasks > Task Labels: each has a colour and shows how many tasks carry it, click one in the sidebar to list its tasks across projects, drop a task onto it to tag the task, and rename or delete it everywhere at once. Tasks take labels from a chip picker that suggests existing ones; a new name typed as `@name` is registered with the default colour.
 
 Dividers are rules dropped between rows to group them; each can carry a short heading centred on the rule, edited in place.
+
+The Documents dashboard is a folder browser: it shows one folder's subfolders, documents, and uploaded files as cards or rows (the choice is remembered per browser), with a breadcrumb and an Upload button. Any file type up to 25 MB can be uploaded; images and PDFs open in an inline preview at `/documents/file/<id>`, other types download. Files are stored privately in the `cookie-files` R2 bucket and served only through the authenticated `cookie-web-tasks` Worker (`/files` routes); they are not searchable, taggable, or visible to Document AI. Starred, tag, and search views keep the flat table because they cut across folders.
 
 The header search is available across applications and routes to `/search`. `cookie-web-search` federates Meilisearch results from the `messages`, `documents`, and `tasks` indexes, then hydrates owned rows from Postgres. Scope tabs can restrict results to mail, documents, or tasks. Mailbox Q&A remains mail-only.
 
