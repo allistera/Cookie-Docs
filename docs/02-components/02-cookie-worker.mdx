@@ -57,6 +57,21 @@ Meilisearch owns keyword/semantic ranking for three indexes: `messages`, `docume
 
 `GET /search` without `scope` keeps the mail-only response used by existing clients. `scope=all|mail|documents|tasks` returns a federated response for Cookie-Web's unified search page. Subtask text is folded into its top-level task's search document. `POST /ask` remains owner-scoped mailbox retrieval plus an OpenAI answer with sources.
 
+## Uploaded files (`cookie-web-tasks`)
+
+Files uploaded to Documents are handled by `cookie-web-tasks` under `/files`. Bytes go to the private R2 bucket `cookie-files` (binding `FILES`); metadata goes to `document_files`. Any MIME type is accepted up to 25 MB, with 60 uploads per user per minute.
+
+| Route | Behaviour |
+| --- | --- |
+| `GET /files?folder=<uuid\|root>` | Lists the caller's files in one folder |
+| `POST /files` | `multipart/form-data` with `file` and optional `folder`. The declared `Content-Length` is checked before the body is read; the object is written first and removed again if the metadata insert fails |
+| `GET /files/:id` | Metadata for one owned file |
+| `GET /files/:id/content` | The bytes, served `inline` only for sniffed JPEG, PNG, GIF, WebP, and PDF, otherwise as an `attachment`, always with `nosniff` |
+| `PATCH /files/:id` | Rename, or move to another owned folder or the root |
+| `DELETE /files/:id` | Deletes the row, then the object; a failed object delete is reported to Sentry, not surfaced |
+
+Without the `FILES` binding the upload route answers `503`, so a Worker deployed before the bucket exists degrades cleanly.
+
 ## AI-assisted unsubscribe
 
 `cookie-web-messages` handles standards-based one-click and `mailto:` unsubscribe first. When a sender offers only a web page, an optional AI tier can inspect the untrusted page, propose one bounded form submission, and verify the result. URL, redirect, form, size, timeout, and public-address checks constrain the model; login, CAPTCHA, JavaScript-only, or ambiguous flows fail closed.

@@ -84,9 +84,31 @@ Labels are managed from a Labels section in the Tasks sidebar and from Settings 
 
 Dividers are rules dropped between rows to group them; each can carry a short heading centred on the rule, edited in place.
 
-The Documents dashboard is a folder browser: it shows one folder's subfolders, documents, and uploaded files as cards or rows (the choice is remembered per browser), with a breadcrumb and an Upload button. Any file type up to 25 MB can be uploaded; images and PDFs open in an inline preview at `/documents/file/<id>`, other types download. Files are stored privately in the `cookie-files` R2 bucket and served only through the authenticated `cookie-web-tasks` Worker (`/files` routes); they are not searchable, taggable, or visible to Document AI. Starred, tag, and search views keep the flat table because they cut across folders.
-
 The header search is available across applications and routes to `/search`. `cookie-web-search` federates Meilisearch results from the `messages`, `documents`, and `tasks` indexes, then hydrates owned rows from Postgres. Scope tabs can restrict results to mail, documents, or tasks. Mailbox Q&A remains mail-only.
+
+## Documents folder browser and uploaded files
+
+The Documents dashboard is a folder browser: it shows one folder at a time, subfolders first, then documents and uploaded files together by name, as cards or rows (the choice is remembered per browser). A breadcrumb leads back up, and the sidebar tree follows the browser: opening a folder, or a document inside one, expands that folder and its parents so the current location is always visible. Starred, tag, and search views keep the flat table because they cut across folders.
+
+### What can be uploaded
+
+- **Any file type.** There is no allow-list; the only limit is **25 MB per file**. Larger files are refused with `413` before any bytes are stored, and a user may start at most 60 uploads per minute (`429` beyond that).
+- **Upload** in the toolbar, or drop files anywhere on the pane, adds them to the folder currently shown. Files can also be dropped onto a folder card, or onto a folder in the sidebar, and moved later from the item menu.
+- The file's type is detected from its first bytes for JPEG, PNG, GIF, WebP, and PDF. Anything else keeps the type the browser declared, or `application/octet-stream` when it declares none. The stored name is trimmed to 255 characters.
+
+### Where files live
+
+| Piece | Location |
+| --- | --- |
+| Bytes | Private Cloudflare R2 bucket `cookie-files`, bound to `cookie-web-tasks` as `FILES`, keyed by `<user_id>/<uuid>` so a key never carries a client-supplied name |
+| Metadata | `document_files` in Supabase (name, MIME type, size, folder, owner), migration `0076` |
+| Access | Only through the authenticated `cookie-web-tasks` Worker `/files` routes; the bucket is never public and every read checks ownership first |
+
+Files are not indexed for search, cannot be tagged, and are never read by Document AI. Deleting a folder moves its files (like its documents) to the root instead of destroying them; deleting a file removes the metadata row first and then the R2 object.
+
+### Opening and downloading
+
+Images and PDFs, the sniffed types only, open in an inline preview at `/documents/file/<id>`, with a download button. Every other type downloads with its original name. The Worker serves both with `X-Content-Type-Options: nosniff`, so a file uploaded with a misleading declared type is never rendered as something it is not.
 
 ## Document editing and bounded lists
 
