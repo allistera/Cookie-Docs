@@ -108,7 +108,7 @@ Files are not indexed for search, cannot be tagged, and are never read by Docume
 
 ### Opening and downloading
 
-Images and PDFs, the sniffed types only, open in an inline preview at `/documents/file/<id>`, with a download button. Every other type downloads with its original name. The Worker serves both with `X-Content-Type-Options: nosniff`, so a file uploaded with a misleading declared type is never rendered as something it is not.
+Image files show a thumbnail of their bytes in place of the icon, in both the grid and the list, fetched through the same authenticated route once the card scrolls into view and cached per file for the session. Images and PDFs, the sniffed types only, open in an inline preview at `/documents/file/<id>`, with a download button. Every other type downloads with its original name. The Worker serves both with `X-Content-Type-Options: nosniff`, so a file uploaded with a misleading declared type is never rendered as something it is not.
 
 ## Document editing and bounded lists
 
