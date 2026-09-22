@@ -9,7 +9,7 @@ Each repository owns its validation and deployment surface. Cookie-Web and Cooki
 
 | Repository | Automated checks | Deployment |
 | --- | --- | --- |
-| Cookie-Web | Format, Oxlint/ESLint, unit tests, production build, Chromium Playwright | Vercel deploys pushes to `main`; migration changes also run `migrate.yml` |
+| Cookie-Web | Format, Oxlint/ESLint, unit tests, production build, Chromium and Firefox Playwright | Vercel deploys pushes to `main`; migration changes also run `migrate.yml` |
 | Cookie-Worker | Format, lint, generated-type check, repository typecheck, unit tests, `dry-run --all` | Manual `Deploy` workflow; default `all` publishes all thirteen sequentially, or one Worker can be selected |
 | Cookie-iOS | SwiftLint, XcodeGen project generation and the unit-test bundle on an iPhone Simulator | Main runs archive/sign and upload to TestFlight after lint and native tests pass |
 | Cookie-Agents | Ruff, Pytest, and Docker image build | Render Blueprint auto-deploys the API on `main`; separate workflow publishes static API docs |
