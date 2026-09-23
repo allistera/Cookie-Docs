@@ -64,7 +64,7 @@ same Supabase database.
 | `cookie-web-tasks` | **Cloudflare** | `tasks-api.infinitywave.online` — AI Today, Tasks, projects, and Documents |
 | `mail-app-ingest` | **Cloudflare** | Email Worker on inbound mail (+ a 15-minute recovery cron) |
 | `data-enricher` | **Cloudflare** | Hourly cron gated by the saved Europe/London schedule, plus on-demand `POST /run` |
-| `scheduled-send-flusher` | **Cloudflare** | Cron every 5 minutes |
+| `scheduled-send-flusher` | **Cloudflare** | Cron every 15 minutes, safety net behind the `ScheduledSendClock` alarm |
 | Cookie-Agents API + database | **Render** | Separate Gmail/Todoist collector; not connected to the mail-app schema |
 
 :::note
@@ -191,14 +191,17 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Cron["5-minute cron"] --> Flusher["scheduled-send-flusher"]
-    Flusher --> API["cookie-web-send<br/>service binding"]
+    Queue["POST /send with sendAt"] --> Clock["ScheduledSendClock<br/>Durable Object alarm"]
+    Clock --> API["cookie-web-send"]
+    Cron["15-minute cron"] --> Flusher["scheduled-send-flusher"]
+    Flusher --> API
     API --> DB[("Supabase Postgres")]
     API --> Resend[["Resend"]]
 ```
 
 - **`data-enricher`** runs inbox triage only, using an hourly cron gated by the owner-configured Europe/London schedule (default daily, 09:00–19:00 inclusive), plus on-demand `POST /run`. It triages the last 24 hours of Inbox mail and stores the result in Postgres for AI Today through `cookie-web-tasks`. News generation and per-email task extraction are disabled; existing stored results remain readable.
-- **`scheduled-send-flusher`** runs every 5 minutes and calls `POST /send/flush` on `cookie-web-send` over a Cloudflare service binding. It owns no mail-sending logic itself — `cookie-web-send` claims the due rows and calls Resend.
+- **On-time delivery** is the `ScheduledSendClock` Durable Object inside `cookie-web-send`: queuing a send arms its single alarm for the earliest pending time, and when it fires the same claim-and-deliver code the flush route uses runs, then re-arms from the next pending send.
+- **`scheduled-send-flusher`** is the safety net behind that alarm. It runs every 15 minutes and calls `POST /send/flush` on `cookie-web-send` over a Cloudflare service binding, which picks up retries, expired leases and anything a lost alarm missed, and runs the housekeeping sweeps. It owns no mail-sending logic itself — `cookie-web-send` claims the due rows and calls Resend.
 
 See [Cookie-Worker → data-enricher and scheduled-send-flusher](/components/cookie-worker) for both.
 
