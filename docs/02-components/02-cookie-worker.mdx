@@ -103,7 +103,7 @@ npm run dry-run -- --all
 | Name | Scope | Purpose |
 | --- | --- | --- |
 | `HYPERDRIVE` | all data-backed Workers | Supabase connection |
-| `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | browser/API Workers | Verify the SPA's access token |
+| `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | browser/API Workers | Verify the SPA's access token. `AUTH0_DOMAIN` may list several domains, comma-separated: each is an accepted issuer and the first supplies the JWKS, so the custom domain `auth.infinitywave.online` and the tenant domain coexist during a move |
 | `ALLOWED_ORIGIN` | browser/API Workers | Production CORS origin |
 | `MEILISEARCH_URL` / `MEILISEARCH_API_KEY` | search readers/writers | Hybrid indexes and write synchronization |
 | `OPENAI_API_KEY` | AI, search answer, unsubscribe, ingest, enricher | Responses API; Meilisearch receives its embedder credential during reindex |
