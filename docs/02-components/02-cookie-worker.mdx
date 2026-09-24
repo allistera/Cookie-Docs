@@ -71,7 +71,7 @@ Migration `0082_out_of_office.sql` adds an inbound revision snapshot trigger on
 server-role access; no Supabase Auth UUID assumptions or global grants change.
 There is no backfill or default enablement. A snapshot failure leaves mail
 ineligible without failing storage. `messages.auto_reply_suppressed` is the
-screening seam: future screening/blocking must set it before exposing a decision;
+screening seam: sender screening/blocking sets it before exposing a decision;
 it does not change forwarding. Dispatch locks and rechecks the message and its
 classification, skipping busy rows with `NOWAIT`.
 
@@ -139,7 +139,7 @@ budget. Successful End now means no later dispatch begins; it cannot recall a
 provider request already underway. Provider/body/header content and credentials
 are excluded from responder logs.
 
-For future screening, initial suppression of a new arrival belongs in the
+For sender screening, initial suppression of a new arrival belongs in the
 uncommitted ingest transaction and must **not** acquire the responder lock.
 Post-ingest block/screen changes must acquire `lockOutOfOfficeDispatch` first,
 before any ingest-owner advisory, user, message or classifier locks; set
@@ -155,6 +155,85 @@ then deploy the compatible ingest and updated emails/send Workers, then the Web
 settings and Docs. Accounts remain disabled throughout rollout. Use GitHub Actions
 for unit/E2E verification; migration execution and any controlled delivery checks
 belong to the release operator.
+
+## Sender decisions and screening
+
+Migration `0083_sender_screening.sql` follows `0082`. Its server-only
+`sender_decisions` table is keyed by `(user_id, address)`, enables RLS and revokes
+all privileges from `PUBLIC`, `anon` and `authenticated`. Values are `accepted`
+or `blocked`. No historical incoming/contact/sent-address backfill occurs.
+`users.prefs.senderScreening` is a strict boolean, absent/false by default;
+updates preserve other preferences, including out of office.
+
+The `messages_screen_sender` BEFORE INSERT trigger persists
+`messages.screening_status` as `allowed`, `held` or `blocked`. It reads the
+displayed `from_address` under ingest's existing owner advisory transaction,
+before the notification trigger can queue events. Explicit block wins; acceptance
+bypasses screening only. On a lookup error, the message is stored as held with
+`auto_reply_suppressed = true`, preserving storage and forwarding while failing
+closed for alerts/replies. Sent messages and legacy rows default to allowed.
+Ingest never acquires the responder dispatch lock.
+
+Authenticated `GET /emails/senders` returns `{ enabled, decisions, nextCursor }`
+with at most 50 decisions. `after=<address>` pages the normalized address order;
+`address=<address>` reads one exact decision. `PUT /emails/senders` takes an
+`action`: `settings` with boolean `enabled`; `block`, `accept`, `unblock` or
+`forget` with an exact `address`; or `restore` with an owned `messageId`. Block
+can include an owned `messageId` belonging to that sender to withhold the reader's
+message. Malformed/non-exact addresses and mismatched ownership are rejected.
+
+Every mutation obtains `lockOutOfOfficeDispatch` first, then ingest's owner lock,
+then the user/message rows. Blocking suppresses replies on all existing inbound
+rows with that owner's exact From address, clears their pending alert events,
+and moves only the selected message and previously-held mail. Acceptance releases
+held mail; unblocking returns it to held while screening is enabled or allowed
+otherwise. Restoring one message is refused while its sender remains blocked.
+Read/archive/spam/snooze fields are never changed by these mutations.
+`auto_reply_suppressed` stays true on previously-withheld mail after release;
+no queue replay occurs. A changed disposition clears `search_indexed_at`;
+bulk sender decisions invalidate stored thread summaries in the same transaction.
+
+`GET /emails?folder=screening` and `folder=blocked` use normal owner-scoped keyset
+pagination and ignore independent archive/spam/classifier state. Ordinary mailbox
+queries and counts exclude withheld rows. Search and Ask recheck Postgres during
+hydration, so stale index entries cannot reveal held mail; index synchronization
+reuses its existing exclusion flag until the drift sweep catches up. Thread
+history, summaries, extracted tasks and AI Today live message hydration exclude
+withheld rows. Digest snapshots record all contributing message IDs, including
+noise; the whole generated snapshot is hidden when a contributor is now held,
+so overview prose cannot reveal hidden content. Older snapshots without IDs use
+a conservative check of the original 24-hour source window. Freshly generated
+digests only use allowed mail. The spam-retention sweep excludes both held states.
+
+The notification trigger queues alerts only for allowed arrivals, but still emits
+content-free realtime refresh pings. Browser notification claims recheck current
+disposition and the exact sender block; ntfy does so in its batch selection and
+again before every publish/retry. The responder reads persisted suppression at
+enqueue, claim and dispatch. An already-handed-off alert or provider request
+cannot be retracted.
+
+Release order: publish the completed Web head to `cookie-feature/sender-screening`
+and await its full CI, including the mandatory PostgreSQL tests. The CI push
+filter permits only `main` and `cookie-feature/**`; the production migration
+workflow is unchanged. Then publish the migration-only Web parent to `main`
+and await **Migrate Database**;
+deploy `mail-app-ingest`, `cookie-web-notifications`, `cookie-web-send`,
+`cookie-web-messages`, `cookie-web-search`, `cookie-web-ai`, `cookie-web-tasks`,
+`data-enricher`, then `cookie-web-emails` last; then publish the Web interface and Docs.
+The messages/send/ingest Workers consume the changed shared search-index mapping.
+All updated Workers require `0083`; none may deploy before migration success.
+Keep screening and the responder disabled and do not create sender decisions
+throughout the staged rollout. Existing rows and ordinary new arrivals remain
+allowed during that interval. Deploying the decision API last ensures all read,
+retention and delivery guards are active before it can create held mail.
+
+The Web Checks CI job supplies an isolated PostgreSQL 17 service named
+`cookie_screening_test`. Its migration regression file refuses non-loopback or
+other database names and fails CI if the test connection is missing. It applies
+the actual `0080`, `0082` and `0083` SQL above a small synthetic pre-0080 schema
+fixture; it does not emulate Supabase realtime infrastructure or execute the
+entire historical migration chain. Worker suites cover authenticated actions,
+notification delivery/retries, responder suppression and lock concurrency.
 
 ## Saved mail views API
 

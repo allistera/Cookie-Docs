@@ -109,6 +109,51 @@ Settings are private to the signed-in account. A conflicting save keeps the loca
 draft; **Discard edits and load latest** explicitly reloads the current revision.
 The banner refreshes when the window gains focus and every minute.
 
+## Sender blocking and new-sender screening
+
+Open a received message and expand **Sender controls** to **Block sender**,
+**Unblock sender**, or **Accept sender**. The control shows the exact From address
+being changed. A reader block moves that message and any already-held mail from
+the address into **Blocked**; future arrivals are held there too. Older ordinary
+mail stays in its current folders. Blocking from **Settings → Senders and
+screening** affects future arrivals and already-held mail, without moving the
+older ordinary mailbox. Settings lists both accepted and blocked addresses and
+lets you add or remove a decision.
+
+**Screen unknown senders** is optional and off by default. A known sender is
+only an address you explicitly accepted. Previous correspondence, contacts and
+sent mail do not grant trust. Matching trims surrounding spaces and ignores
+letter case; it does not collapse plus aliases, remove dots, trust an entire
+domain or interpret wildcards. Sender decisions support a single ordinary bare
+mailbox address. Unusual addresses that cannot be accepted can still be reviewed
+and restored one message at a time.
+
+When screening is enabled, unknown arrivals wait in the sidebar's **New senders**
+view. Open a message to **Accept sender**, **Block sender**, or **Restore this
+message only**. Accept releases all held mail from that exact address and bypasses
+screening for future arrivals. Restore releases only the selected message and
+does not make the sender known. Unblock removes the block; with screening enabled
+the sender's blocked mail returns to New senders, otherwise it is released.
+Removing acceptance affects future arrivals. Turning screening off leaves
+already-held mail available for review.
+
+Explicit blocking wins over screening. Acceptance bypasses screening, not spam
+protection. Spam classification, label/category rules and auto-archive continue
+independently; review views include held mail even when a rule archives it.
+Release preserves the message's read, archive, spam and snooze state, so released
+mail may belong in Done, Spam or Snoozed instead of Inbox. Held/blocked mail stays
+out of ordinary folders, search, thread history and AI Today message items.
+Both review views retain mail until you explicitly delete it: automatic Spam
+retention does not purge held/blocked mail. Once released, ordinary Spam retention
+applies again using the original spam-verdict time.
+
+Held/blocked arrivals do not produce browser or ntfy alerts or automatic replies.
+Releasing them does not create delayed alerts or revive replies. Blocking also
+suppresses pending alerts/replies to existing mail from that displayed From
+address, even if its envelope sender differs. A browser alert or provider request
+already handed off cannot be recalled. Blocking does not unsubscribe, reject
+inbound delivery, change original forwarding, or restrict manual replies/sends.
+
 ## Saved mail views
 
 Open the Mail tab of Search, enter a query, and choose **Save as view**. Name it and select an explicit folder: All mail, Inbox, Sent, Spam, Snoozed, or Done. If the current search contains a supported `in:` folder, the save form moves it into the folder selector. Saved views use keyword search and appear in the Email sidebar and the `/` command palette. They load with the account in another browser. **Manage** in the sidebar lets you rename, reorder, or delete definitions.
