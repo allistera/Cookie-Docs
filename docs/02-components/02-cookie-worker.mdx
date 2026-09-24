@@ -55,6 +55,8 @@ A complete response contains `complete: true`, `busy` as numeric epoch-milliseco
 
 Native recurrence follows Cookie's daily/weekly/monthly/yearly model, including selected weekdays. Fresh ICS checks use node-ical's expansion for daily/weekly/monthly/yearly RRULEs, EXDATE exclusions, and individual RECURRENCE-ID overrides; explicit source timezones preserve instants across DST. Date-only ends are exclusive. Cancelled and transparent events do not block times. Unknown source timezones, ambiguous floating/native times, RDATE, EXRULE, RANGE overrides, VFREEBUSY components, subdaily or multiple-times-per-day rules, and unsupported/non-Gregorian rules block suggestions. Dates before 1970 in a feed, durations over 30 days, more than 1,000 feed events or native masters, more than 5,000 busy occurrences, and native recurrence beyond safe stepping limits also fail closed. Users can select another calendar or range; cached rows are never a fallback for incomplete coverage.
 
+ICS `DURATION` values support only positive elapsed hours, minutes, and seconds (`PT…`, optionally prefixed with `+`), bounded to 30 days. Nominal day/week forms such as `P1D` or `P1W`, malformed values, and unsupported duration parameters make the source incomplete before parsing; this avoids incorrect daylight-saving boundaries and parser logging of raw values. All-day events with explicit, exclusive `DTEND` remain supported. A producer using nominal durations must supply explicit end dates/times before that feed can provide availability suggestions.
+
 ## Cross-Worker calls
 
 Two service bindings keep internal orchestration on Cloudflare's network:
