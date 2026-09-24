@@ -60,7 +60,7 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 
 | Origin / Worker | Routes used by the web app |
 | --- | --- |
-| `emails-api` / `cookie-web-emails` | `GET /emails`, `GET /emails/state`, `GET/PUT /emails/compose-preferences` |
+| `emails-api` / `cookie-web-emails` | `GET /emails`, `GET /emails/state`, `GET/PUT /emails/compose-preferences`, `GET/PUT /emails/out-of-office` |
 | `messages-api` / `cookie-web-messages` | message read/state/unsubscribe, bodies, attachments, contacts |
 | `labels-api` / `cookie-web-labels` | label and label-rule CRUD |
 | `ai-api` / `cookie-web-ai` | `POST /compose`, `POST /summarize` |
@@ -75,6 +75,39 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 :::note
 The Cloudflare routes use clean paths instead of the former Vercel `?resource=` multiplexing. Cookie-Web's remaining `/api/send` file is a compatibility path, not evidence that the other APIs still run on Vercel.
 :::
+
+## Out of office
+
+Open **Settings → Out of office**, choose an inclusive start/end date and an IANA
+timezone, and review the subject and plain-text message in Preview. Check
+**Enable automatic replies** and save to turn it on. It is off for every account
+until explicitly enabled. Settings show disabled, scheduled, active, or expired;
+the main app shows a banner while active. **End now** stops future dispatches. A
+reply already handed to the provider may still arrive.
+
+Only new mail received while that saved revision was enabled and within its
+dated window can qualify. Editing or re-enabling starts a new revision; it never
+revives old mail or changes an already queued reply's text. Cookie waits for
+completed non-spam classification, excludes list/bulk mail, automated mail,
+null-envelope senders, self-mail and screened/blocked mail, and uses a four-day
+cooldown per normalized envelope sender. Delivery uses Cookie's configured
+authorized sending address, never a From address entered in this form. Processing
+can take several minutes. Incoming storage and original forwarding continue
+independently.
+
+The delivered mailbox address must also appear in To or Cc. Mail addressed only
+through Bcc is excluded so an automatic reply does not reveal a hidden recipient.
+
+**Replies needing review** appears when delivery could not be confirmed safely
+or the provider rejected it. Check the provider's delivery history, then choose
+**Verified delivered** or **Verified not delivered**. Neither action sends mail.
+Uncertain replies pause further automatic replies to that sender until resolved.
+Cookie stops retries before the provider's idempotency protection expires; it
+does not promise exactly-once delivery after an ambiguous external failure.
+
+Settings are private to the signed-in account. A conflicting save keeps the local
+draft; **Discard edits and load latest** explicitly reloads the current revision.
+The banner refreshes when the window gains focus and every minute.
 
 ## Saved mail views
 

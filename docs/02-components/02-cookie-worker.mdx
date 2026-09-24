@@ -13,17 +13,17 @@ Ten Workers serve Cookie's browser APIs on custom domains; three run from email 
 | --- | --- | --- |
 | `cookie-web-ai` | HTTP | `POST /compose` and `/summarize`; shared durable AI quota |
 | `cookie-web-calendar` | HTTP | `/calendar-events`, `/calendars`, and `POST /calendar-availability`, including recurrence, ICS sync, fresh availability reads, and natural-language event drafts |
-| `cookie-web-emails` | HTTP | keyset-paginated `/emails` lists, `/emails/state` bootstrap, and composer preferences |
+| `cookie-web-emails` | HTTP | keyset-paginated `/emails` lists, `/emails/state` bootstrap, composer preferences, and out-of-office settings |
 | `cookie-web-labels` | HTTP | label and label-rule CRUD |
 | `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, and contacts |
 | `cookie-web-notifications` | HTTP | `/notification-event` claim/ack lease for browser notifications |
 | `cookie-web-receipts` | HTTP + email clients | authenticated receipt status plus an unauthenticated, flood-guarded tracking pixel |
 | `cookie-web-search` | HTTP | Meilisearch mail/federated search, saved mail views, and mailbox Q&A |
-| `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, cancellation, follow-up state, and `/send/flush` |
+| `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, automatic replies, cancellation, follow-up state, and `/send/flush` |
 | `cookie-web-tasks` | HTTP + service binding | AI Today, Tasks/projects/subtasks, Documents, preferences, and enricher refresh |
 | `mail-app-ingest` | Email + 15-minute cron | inbound parse/store/forward, classification, indexing, and recovery |
 | `data-enricher` | Hourly cron + HTTP | inbox triage only |
-| `scheduled-send-flusher` | 5-minute cron | invokes `cookie-web-send` to flush due scheduled messages |
+| `scheduled-send-flusher` | 5-minute cron | invokes `cookie-web-send` to flush due scheduled messages and automatic replies |
 
 The ten `cookie-web-*` APIs use custom `*-api.infinitywave.online` domains and keep `workers.dev` enabled for debugging. Their shared CORS policy permits the production SPA, localhost ports, and Vercel preview deployments. Auth0 bearer verification is shared through `shared/auth-jwt.js`; the receipt pixel and bearer-protected send flush are the deliberate authentication exceptions.
 
@@ -44,6 +44,88 @@ The ten `cookie-web-*` APIs use custom `*-api.infinitywave.online` domains and k
 `PUT` sends that full shape with the revision most recently read. Each snippet has a stable `id`, unique lowercase slug `name` (the slash trigger), and nonempty `html`, for example `{ "id": "...", "name": "hello-world", "html": "<p>Hello</p>" }`. The Worker accepts at most 50 snippets, a 50-character trigger, 65,536 characters per HTML field, and a 512 KiB request. Reserved built-in slash commands cannot be used as names. Rich HTML is untrusted data: clients must sanitize before sending and before placing returned markup into an editor or preview. Cookie-Web uses its existing DOMPurify policy for both directions.
 
 A successful `PUT` returns the complete document with an incremented `revision`. An outdated revision returns HTTP `409` with `{ "error": "Compose preferences changed in another session", "current": { ...latest document... } }`; clients should retain the user's unsaved draft, show the latest document, and require an explicit decision before retrying. Invalid documents return `400`; unsupported methods return `405`. Authentication rejects an unprovisioned subject with `403`; a user row that disappears after authentication returns `404` from this handler. The conditional per-user update stores this document under `users.prefs.composePreferences` and preserves unrelated preference keys. No schema migration is required.
+
+## Out-of-office API and delivery
+
+`cookie-web-emails` exposes authenticated `GET/PUT /emails/out-of-office`, using
+the verified Auth0 subject's `users` row and private/no-store responses. Preferences
+live in `users.prefs.outOfOffice`; unrelated preferences are preserved. A full
+`PUT` has `revision`, `enabled`, `startDate`, `endDate` (inclusive `YYYY-MM-DD`),
+`timeZone` (IANA), `subject` (up to 998 bytes, no controls), and `text` (plain text,
+up to 10,000 characters). A successful save increments the revision and uses a
+server activation timestamp. Invalid data is `400`; stale revisions are `409`
+with the current settings. Other owners cannot read or mutate these records.
+
+`GET` returns the settings, computed `status` (`disabled`, `scheduled`, `active`,
+`expired`), and up to 20 unresolved failed/uncertain delivery records. `PUT` with
+`{ "action": "stop" }` disables the latest revision regardless of the caller's
+cached revision. `PUT` with `{ "action": "resolve", "deliveryId": "<uuid>",
+"outcome": "delivered" }` or `"not_delivered"` records a verified manual outcome;
+it never resends. Confirmed delivery starts a fresh four-day cooldown; confirmed
+non-delivery releases the sender hold for future arrivals. Resolved rows remain
+durable deduplication history.
+
+Migration `0082_out_of_office.sql` adds an inbound revision snapshot trigger on
+`messages`, plus RLS-protected, server-only `out_of_office_deliveries` and
+`out_of_office_senders`. It explicitly revokes browser-role privileges and keeps
+server-role access; no Supabase Auth UUID assumptions or global grants change.
+There is no backfill or default enablement. A snapshot failure leaves mail
+ineligible without failing storage. `messages.auto_reply_suppressed` is the
+screening seam: future screening/blocking must set it before exposing a decision;
+it does not change forwarding. Dispatch locks and rechecks the message and its
+classification, skipping busy rows with `NOWAIT`.
+
+The existing bearer-authenticated `/send/flush` runs the unchanged scheduled-send
+leg first and preserves its response. Automatic work uses `waitUntil` and its own
+database connection, so it does not consume the scheduled caller's existing
+20-second HTTP deadline. It scans at most 25 arrivals and attempts at most 10
+automatic deliveries within one shared 20-second dispatch budget. Database time
+also consumes that budget; no later dispatch starts after it expires, and each
+provider timeout is limited to the remaining time (at most ten seconds). Platform
+interruption leaves committed leases recoverable on the next flush. A 22-second
+watchdog closes a stalled dedicated database client, leaving cleanup margin within
+Cloudflare's shared [30-second HTTP background limit](https://developers.cloudflare.com/workers/platform/limits/#duration).
+It requires a matching arrival
+revision, database `created_at` within the activation/window, completed non-spam
+classification, and loop/list/self-mail eligibility. Each queued payload is
+immutable, including the configured From identity and fixed loop headers
+`Auto-Submitted: auto-replied`, `X-Auto-Response-Suppress: All`, and
+`Precedence: bulk`. Untrusted Reply-To is ignored; a reply targets the normalized
+envelope sender. Sent copies use existing storage/search integration without a
+tracking pixel or attachments.
+
+Eligibility also requires the persisted envelope destination in parsed To/Cc;
+Bcc-only deliveries are suppressed. This follows the conservative recipient and
+reverse-path guidance in [RFC 3834](https://www.rfc-editor.org/rfc/rfc3834#section-4).
+Resend's high-level email API does not expose a null SMTP MAIL FROM control, so
+Cookie cannot guarantee the RFC's recommended null reverse-path. It does not fake
+a Return-Path header or claim full RFC compliance. The four-day sender cooldown
+is Cookie's explicit product policy.
+
+The state machine is `pending → sending → sent`; known first-attempt provider
+rejections become `failed`, ineligible unattempted mail becomes `suppressed`, and
+ambiguous outcomes become `uncertain`. An atomic owner-locked claim commits a
+two-minute lease, unique claim token, stable `out-of-office/<delivery UUID>` key,
+and one reservation in the existing ten-sends-per-minute quota before dispatch.
+Retries neither charge twice nor refund a possibly consumed reservation. Unknown
+transport outcomes retry with backoff only within 23 hours of the first attempt,
+with a maximum of 12 attempts; expired or conflicting outcomes require manual
+review. The provider retains keys for [24 hours](https://resend.com/docs/dashboard/emails/idempotency-keys).
+An uncertain sender stays blocked until resolved, even after four days. Do not
+delete unresolved state or bypass the queue to retry at the provider.
+
+Lock ordering is owner advisory lock, user row, delivery row, message/classifier
+rows (`NOWAIT`), sender cooldown, then outbound quota. The same owner lock is used
+by ingest and preference saves. Dispatch holds it through a fixed-origin,
+abortable Resend request with a ten-second timeout. Successful End now means no
+later dispatch begins; it cannot recall a provider request already underway.
+Provider/body/header content and credentials are excluded from responder logs.
+
+Release the migration-only Web parent first and await **Migrate Database** success,
+then deploy the compatible ingest and updated emails/send Workers, then the Web
+settings and Docs. Accounts remain disabled throughout rollout. Use GitHub Actions
+for unit/E2E verification; migration execution and any controlled delivery checks
+belong to the release operator.
 
 ## Saved mail views API
 
