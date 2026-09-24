@@ -114,12 +114,41 @@ review. The provider retains keys for [24 hours](https://resend.com/docs/dashboa
 An uncertain sender stays blocked until resolved, even after four days. Do not
 delete unresolved state or bypass the queue to retry at the provider.
 
-Lock ordering is owner advisory lock, user row, delivery row, message/classifier
-rows (`NOWAIT`), sender cooldown, then outbound quota. The same owner lock is used
-by ingest and preference saves. Dispatch holds it through a fixed-origin,
-abortable Resend request with a ten-second timeout. Successful End now means no
-later dispatch begins; it cannot recall a provider request already underway.
-Provider/body/header content and credentials are excluded from responder logs.
+Responder serialization uses `lockOutOfOfficeDispatch(tx, userId)` from
+`shared/outOfOffice.js`: the transaction advisory lock
+`pg_advisory_xact_lock(hashtext('cookie.out-of-office'), hashtext(userId))`.
+PostgreSQL's [two-integer advisory key space](https://www.postgresql.org/docs/17/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS)
+is separate from ingest's single-bigint `hashtextextended(userId, 0)` lock.
+
+Short claim/config/manual-resolution transactions acquire the responder lock
+first, then the ingest-owner advisory lock, user row and any delivery,
+message/classifier (`NOWAIT`), sender and quota rows, in that order. Settings saves
+keep their brief ingest-owner lock so revision/activation writes remain atomic
+with the arrival snapshot. Enqueue does not acquire the responder lock or hold
+an ingest-owner/user lock while waiting for it; delivery rechecks queued snapshots.
+
+Dispatch takes only the responder advisory lock, its delivery row and the
+original message/classifier rows; it reads `users` without a row lock. Neither
+ingest's advisory lock nor `users FOR UPDATE` spans provider I/O. This also avoids
+blocking the `KEY SHARE` user-row checks that inbound foreign keys need. An End
+now/config/resolve waiter obtains the responder lock before borrowing any ingest
+lock, so waiting for a slow provider does not stall new inbound storage or
+forwarding. Ingest's existing five-second storage budget is unchanged. Provider
+calls remain fixed-origin and abortable at ten seconds or the remaining background
+budget. Successful End now means no later dispatch begins; it cannot recall a
+provider request already underway. Provider/body/header content and credentials
+are excluded from responder logs.
+
+For future screening, initial suppression of a new arrival belongs in the
+uncommitted ingest transaction and must **not** acquire the responder lock.
+Post-ingest block/screen changes must acquire `lockOutOfOfficeDispatch` first,
+before any ingest-owner advisory, user, message or classifier locks; set
+`messages.auto_reply_suppressed = true` with an owner predicate before committing
+and exposing the decision. A change to owner-wide blocking rules uses the same
+order. Never acquire the responder lock from inside an already owner-/row-locked
+transaction. This serializes suppression with dispatch without putting provider
+latency on new-mail ingestion; a successful block cannot retract a provider
+request already underway.
 
 Release the migration-only Web parent first and await **Migrate Database** success,
 then deploy the compatible ingest and updated emails/send Workers, then the Web
