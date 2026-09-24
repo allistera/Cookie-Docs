@@ -18,7 +18,7 @@ Ten Workers serve Cookie's browser APIs on custom domains; three run from email 
 | `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, and contacts |
 | `cookie-web-notifications` | HTTP | `/notification-event` claim/ack lease for browser notifications |
 | `cookie-web-receipts` | HTTP + email clients | authenticated receipt status plus an unauthenticated, flood-guarded tracking pixel |
-| `cookie-web-search` | HTTP | Meilisearch mail/federated search and mailbox Q&A |
+| `cookie-web-search` | HTTP | Meilisearch mail/federated search, saved mail views, and mailbox Q&A |
 | `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, cancellation, follow-up state, and `/send/flush` |
 | `cookie-web-tasks` | HTTP + service binding | AI Today, Tasks/projects/subtasks, Documents, preferences, and enricher refresh |
 | `mail-app-ingest` | Email + 15-minute cron | inbound parse/store/forward, classification, indexing, and recovery |
@@ -44,6 +44,14 @@ The ten `cookie-web-*` APIs use custom `*-api.infinitywave.online` domains and k
 `PUT` sends that full shape with the revision most recently read. Each snippet has a stable `id`, unique lowercase slug `name` (the slash trigger), and nonempty `html`, for example `{ "id": "...", "name": "hello-world", "html": "<p>Hello</p>" }`. The Worker accepts at most 50 snippets, a 50-character trigger, 65,536 characters per HTML field, and a 512 KiB request. Reserved built-in slash commands cannot be used as names. Rich HTML is untrusted data: clients must sanitize before sending and before placing returned markup into an editor or preview. Cookie-Web uses its existing DOMPurify policy for both directions.
 
 A successful `PUT` returns the complete document with an incremented `revision`. An outdated revision returns HTTP `409` with `{ "error": "Compose preferences changed in another session", "current": { ...latest document... } }`; clients should retain the user's unsaved draft, show the latest document, and require an explicit decision before retrying. Invalid documents return `400`; unsupported methods return `405`. Authentication rejects an unprovisioned subject with `403`; a user row that disappears after authentication returns `404` from this handler. The conditional per-user update stores this document under `users.prefs.composePreferences` and preserves unrelated preference keys. No schema migration is required.
+
+## Saved mail views API
+
+`cookie-web-search` exposes authenticated `GET` and `PUT /saved-views` at the `search-api` origin. The verified Auth0 issuer and `sub` select the provisioned user; the request cannot choose another owner. Responses use `Cache-Control: private, no-store`. Views live under `users.prefs.savedSearchViews`, separately from categories and other preference keys; no schema migration is required.
+
+`GET` returns `{ "revision": 0, "views": [] }` when unset. `PUT` sends the full document with the revision most recently read. A view has a stable UUID `id`, a unique 1–60 character `name`, a 1–470 character `query`, and `folder` set to `all`, `inbox`, `sent`, `spam`, `snoozed`, or `done`. At most 30 views can be stored; their array order is the sidebar/command order. `query` supports words plus one each of `from:` or `sender:`, `to:`, `tag:`, `has:attachment`, `before:YYYY-MM-DD`, and `after:YYYY-MM-DD`. The folder is a separate field; `in:` in the saved query is rejected. Boolean syntax, `is:starred`, repeated operators, and malformed dates are rejected rather than treated as free text. The normal `GET /search` route remains the result API: the client appends `in:<folder>` and requests `scope=mail&mode=keyword` with `limit` and `offset`. `estimatedTotalHits` is an estimate, not an exact count.
+
+An accepted `PUT` returns the full document with an incremented revision. An outdated revision returns `409` with `{ "error": "Saved views changed in another session", "current": { ...latest document... } }`; clients should retain their unsaved draft and ask the user to review the latest document before retrying. Invalid data returns `400`; unsupported methods return `405`. An owner row that disappears after authentication returns `404`. Deleting a view is a `PUT` omitting its definition and never changes messages. Separate views can match the same message, and this API does not alter Important/category deduplication.
 
 ## Availability read API
 

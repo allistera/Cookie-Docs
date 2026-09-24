@@ -50,7 +50,7 @@ Every route requires Auth0 authentication, enforced by both the `App.vue` render
 | `/scheduled` | `ScheduledSendsView` | Pending Send Later messages |
 | `/documents/:id?` | `DocumentsView` | Folder browser (grid or list) over folders, documents, and uploaded files; notes editor with templates, tags, tables, and export |
 | `/documents/file/:fileId` | `DocumentsView` | Inline preview of an uploaded image or PDF, with download |
-| `/search` | `SearchResultsView` | Unified mail, documents, and tasks results |
+| `/search` | `SearchResultsView` | Unified mail, documents, and tasks results; saved mail views use mail-only keyword search |
 | `/tasks` | `TasksView` | Today/Inbox/project task lists, nested projects, detail panel, and subtasks |
 | `/settings/:section?` | `SettingsView` | Account, labels/rules, personalisation, calendars, and integration settings |
 
@@ -65,7 +65,7 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 | `labels-api` / `cookie-web-labels` | label and label-rule CRUD |
 | `ai-api` / `cookie-web-ai` | `POST /compose`, `POST /summarize` |
 | `calendar-api` / `cookie-web-calendar` | calendar/event CRUD, subscriptions, sync, AI interpretation, and `POST /calendar-availability` |
-| `search-api` / `cookie-web-search` | `GET /search` for mail or federated scopes; `POST /ask` for mailbox Q&A |
+| `search-api` / `cookie-web-search` | `GET /search` for mail or federated scopes; `GET/PUT /saved-views`; `POST /ask` for mailbox Q&A |
 | `tasks-api` / `cookie-web-tasks` | AI Today, task projects/items/subtasks, documents, uploaded files (`/files`), preferences, and refresh |
 | `notifications-api` / `cookie-web-notifications` | `POST /notification-event` claim/ack |
 | `receipts-api` / `cookie-web-receipts` | authenticated status reads and the unauthenticated tracking pixel |
@@ -75,6 +75,16 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 :::note
 The Cloudflare routes use clean paths instead of the former Vercel `?resource=` multiplexing. Cookie-Web's remaining `/api/send` file is a compatibility path, not evidence that the other APIs still run on Vercel.
 :::
+
+## Saved mail views
+
+Open the Mail tab of Search, enter a query, and choose **Save as view**. Name it and select an explicit folder: All mail, Inbox, Sent, Spam, Snoozed, or Done. If the current search contains a supported `in:` folder, the save form moves it into the folder selector. Saved views use keyword search and appear in the Email sidebar and the `/` command palette. They load with the account in another browser. **Manage** in the sidebar lets you rename, reorder, or delete definitions.
+
+Saved queries support words and one each of `from:` (or its `sender:` alias), `to:`, `tag:`, `has:attachment`, `before:YYYY-MM-DD`, and `after:YYYY-MM-DD`. Values with spaces can be quoted, for example `tag:"Client Project"`. `from:` and `to:` are exact address matches. `before:` excludes its date; `after:` includes its date. Choose the folder separately rather than typing `in:` into the saved query. Boolean `AND`/`OR`/`NOT`, `is:starred`, unknown operators, duplicate filters (including `from:` plus `sender:`), and invalid dates are rejected with an explanation. Repeating sender filters does not create a sender group.
+
+Each view opens `/search` with its query, `scope=mail`, `mode=keyword`, and a stable view ID. The results are fetched from the search Worker page by page, not from the inbox rows already loaded in the browser. Search totals are estimates; the sidebar does not show counts. Views are independent and may contain the same message. They do not affect Important/category tabs or move mail. All mail excludes deleted messages. Deleting a view deletes only its definition. A failed or conflicting save leaves the edit in the form for review; the latest account views are available to compare before retrying.
+
+The [saved-view API contract](/components/cookie-worker#saved-mail-views-api) describes the revision check and limits.
 
 ## Synced composer preferences
 
