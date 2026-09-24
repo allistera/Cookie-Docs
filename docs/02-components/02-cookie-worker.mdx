@@ -12,7 +12,7 @@ Ten Workers serve Cookie's browser APIs on custom domains; three run from email 
 | Worker | Trigger | Purpose |
 | --- | --- | --- |
 | `cookie-web-ai` | HTTP | `POST /compose` and `/summarize`; shared durable AI quota |
-| `cookie-web-calendar` | HTTP | `/calendar-events` and `/calendars`, including recurrence, ICS sync, and natural-language event drafts |
+| `cookie-web-calendar` | HTTP | `/calendar-events`, `/calendars`, and `POST /calendar-availability`, including recurrence, ICS sync, fresh availability reads, and natural-language event drafts |
 | `cookie-web-emails` | HTTP | keyset-paginated `/emails` lists, `/emails/state` bootstrap, and composer preferences |
 | `cookie-web-labels` | HTTP | label and label-rule CRUD |
 | `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, and contacts |
@@ -44,6 +44,16 @@ The ten `cookie-web-*` APIs use custom `*-api.infinitywave.online` domains and k
 `PUT` sends that full shape with the revision most recently read. Each snippet has a stable `id`, unique lowercase slug `name` (the slash trigger), and nonempty `html`, for example `{ "id": "...", "name": "hello-world", "html": "<p>Hello</p>" }`. The Worker accepts at most 50 snippets, a 50-character trigger, 65,536 characters per HTML field, and a 512 KiB request. Reserved built-in slash commands cannot be used as names. Rich HTML is untrusted data: clients must sanitize before sending and before placing returned markup into an editor or preview. Cookie-Web uses its existing DOMPurify policy for both directions.
 
 A successful `PUT` returns the complete document with an incremented `revision`. An outdated revision returns HTTP `409` with `{ "error": "Compose preferences changed in another session", "current": { ...latest document... } }`; clients should retain the user's unsaved draft, show the latest document, and require an explicit decision before retrying. Invalid documents return `400`; unsupported methods return `405`. Authentication rejects an unprovisioned subject with `403`; a user row that disappears after authentication returns `404` from this handler. The conditional per-user update stores this document under `users.prefs.composePreferences` and preserves unrelated preference keys. No schema migration is required.
+
+## Availability read API
+
+`POST /calendar-availability` on `cookie-web-calendar` uses the standard Auth0 owner binding. Its JSON request contains `calendarIds` (1–10 unique owned UUIDs), `from` and `to` (inclusive dates, at most 31 days), `timeZone` (proposal/range zone), `interpretationTimeZone` (for native, floating, and date-only times), and `confirmFloatingTimes: true`. Both zones must be recognized IANA timezone identifiers. Requests are limited to ten per minute per user and responses use `Cache-Control: no-store`.
+
+The read resolves subscription URLs from owned calendars and reapplies the current HTTPS host allowlist. Fresh feed downloads reuse the existing 10-second timeout, 5 MiB size limit, DNS/public-address checks, and redirect refusal. It reads native event masters in the bounded range with a 32-day lookback for long or overnight events, expands recurrence, and unions overlapping busy intervals. It does not write cached events or subscription sync metadata.
+
+A complete response contains `complete: true`, `busy` as numeric epoch-millisecond `{ start, end }` intervals, the checked `window`, `checkedAt`, and per-calendar `sources`. Subscription sources distinguish the fresh range's `checkedAt` from cached `subscriptionSyncedAt` and `cachedSyncFailed`. Event titles, descriptions, and feed URLs are omitted. A failed, unsupported, or capped source returns `complete: false` with an empty `busy` array and a safe error; clients must not interpret that empty array as free time.
+
+Native recurrence follows Cookie's daily/weekly/monthly/yearly model, including selected weekdays. Fresh ICS checks use node-ical's expansion for daily/weekly/monthly/yearly RRULEs, EXDATE exclusions, and individual RECURRENCE-ID overrides; explicit source timezones preserve instants across DST. Date-only ends are exclusive. Cancelled and transparent events do not block times. Unknown source timezones, ambiguous floating/native times, RDATE, EXRULE, RANGE overrides, VFREEBUSY components, subdaily or multiple-times-per-day rules, and unsupported/non-Gregorian rules block suggestions. Dates before 1970 in a feed, durations over 30 days, more than 1,000 feed events or native masters, more than 5,000 busy occurrences, and native recurrence beyond safe stepping limits also fail closed. Users can select another calendar or range; cached rows are never a fallback for incomplete coverage.
 
 ## Cross-Worker calls
 

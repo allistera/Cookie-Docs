@@ -64,7 +64,7 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 | `messages-api` / `cookie-web-messages` | message read/state/unsubscribe, bodies, attachments, contacts |
 | `labels-api` / `cookie-web-labels` | label and label-rule CRUD |
 | `ai-api` / `cookie-web-ai` | `POST /compose`, `POST /summarize` |
-| `calendar-api` / `cookie-web-calendar` | calendar/event CRUD, subscriptions, sync, and AI interpretation |
+| `calendar-api` / `cookie-web-calendar` | calendar/event CRUD, subscriptions, sync, AI interpretation, and `POST /calendar-availability` |
 | `search-api` / `cookie-web-search` | `GET /search` for mail or federated scopes; `POST /ask` for mailbox Q&A |
 | `tasks-api` / `cookie-web-tasks` | AI Today, task projects/items/subtasks, documents, uploaded files (`/files`), preferences, and refresh |
 | `notifications-api` / `cookie-web-notifications` | `POST /notification-event` claim/ack |
@@ -87,6 +87,16 @@ This expansion and send check currently belongs to Cookie-Web. Clients that cons
 Older browser-local signature and snippet values are never assigned to an account automatically. If this browser has them, Settings previews the old values and offers checkboxes to replace the account's signature, snippets, or both. Only values chosen in a successful import are removed from the old browser keys. Signing out clears the active in-memory composer preferences and draft; there is no account-scoped browser cache for these preferences.
 
 The cross-client API contract is documented in [Cookie-Worker's composer preferences section](/components/cookie-worker#composer-preferences-api). Mobile clients can reuse it without adopting Cookie-Web's Settings UI.
+
+## Share availability from a draft
+
+Choose **Share availability** below the editor in a new message or inline reply. Select a date range of at most 31 days, a meeting duration, working hours, a proposal timezone, and up to ten calendars. All days in the selected range are considered. Cookie shows up to 100 non-overlapping suggestions; select up to ten, choose **Review selected times**, edit the proposal text, and insert it into the existing draft. The inserted text includes the IANA timezone, UTC offsets, and duration. It remains editable and explicitly labels the times as proposals. Inserting them does not create an event, reserve a time, send an invitation, or produce a booking link.
+
+The **Calendar interpretation timezone** is separate from the proposal/working-hours timezone. Cookie's stored event times have no original timezone, and date-only or floating subscription events also need an interpretation. Confirm that zone before checking. Subscribed timed events with an explicit supported timezone retain their source instants. Choose calendars whose floating times can share the confirmed interpretation zone.
+
+Every check reads owned Cookie events and fetches the selected subscriptions afresh for the requested range; it never calculates free time from cached subscription rows alone. Calendar checkboxes show the last cached sync time, whether it is over 24 hours old or failed, and whether the selected range was freshly checked. A fresh availability check does not update the cached calendar or its last-sync timestamp. A failed, excessive, ambiguous, or unsupported calendar check blocks suggestions until the range or calendar selection changes or a retry succeeds. [Availability API limits](/components/cookie-worker#availability-read-api) describe the supported feed forms.
+
+All-day, recurring, overnight, and overlapping events block their busy intervals. Suggestions exclude nonexistent and repeated daylight-saving wall times and meetings that would cross an offset change. Availability can change after the check; the review shows its timestamp, and recipients still need confirmation. Event titles and subscription URLs are never inserted. Signing out or changing accounts clears the shared calendar cache, closes availability review, and ignores outstanding responses from the previous account.
 
 ## Tasks and unified search
 
