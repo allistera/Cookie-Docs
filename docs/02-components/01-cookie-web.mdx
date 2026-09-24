@@ -80,6 +80,10 @@ The Cloudflare routes use clean paths instead of the former Vercel `?resource=` 
 
 Settings > Email signature and Settings > Compose snippets save to the authenticated Cookie account. A new browser loads them when the user signs in; the signature fills new messages, and saved snippet triggers appear in the composer slash menu. Edits are committed only after the server accepts a save. If another session saved first, Cookie displays the latest account values and keeps the local draft for review.
 
+Snippets can include `{{recipient.first_name}}`, `{{recipient.name}}`, and `{{recipient.email}}`, plus editable fields such as `{{fill:meeting time}}`. Type a saved slash trigger in a new message or inline reply to preview it, review suggested recipient values, and fill the fields before inserting. Cookie uses a recipient name only when it matches one selected address; if the name is unavailable or there are several recipients, enter the value yourself. Values are inserted as text, not HTML. Unfilled fields remain visible in the draft, and Send, Send Later, and inline reply Send warn and stop until those fields are filled or removed. Other brace text and older snippets remain literal and continue to work.
+
+This expansion and send check currently belongs to Cookie-Web. Clients that consume the shared `id`/`name`/`html` snippet records, including a future mobile snippets UI, need equivalent expansion and unresolved-field checks before sending.
+
 Older browser-local signature and snippet values are never assigned to an account automatically. If this browser has them, Settings previews the old values and offers checkboxes to replace the account's signature, snippets, or both. Only values chosen in a successful import are removed from the old browser keys. Signing out clears the active in-memory composer preferences and draft; there is no account-scoped browser cache for these preferences.
 
 The cross-client API contract is documented in [Cookie-Worker's composer preferences section](/components/cookie-worker#composer-preferences-api). Mobile clients can reuse it without adopting Cookie-Web's Settings UI.
