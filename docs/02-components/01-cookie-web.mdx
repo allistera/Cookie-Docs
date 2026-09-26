@@ -196,6 +196,10 @@ Dividers are rules dropped between rows to group them; each can carry a short he
 
 The header search is available across applications and routes to `/search`. `cookie-web-search` federates Meilisearch results from the `messages`, `documents`, and `tasks` indexes, then hydrates owned rows from Postgres. Scope tabs can restrict results to mail, documents, or tasks. Mailbox Q&A remains mail-only.
 
+## Not important
+
+When classification puts an email in **Important** (a high priority, or a category named Important), the reader's **More** menu offers **Not important**. It lowers that email's priority to normal, clears a category named Important, and remembers the sender in `sender_importance_feedback` (migration `0087`). From then on `mail-app-ingest` never rates that sender's mail high priority and leaves categories named Important out of the choices it gives the classifier, so the model files the mail under the best other category. The confirmation toast offers **Undo**, which forgets the sender and restores the email's previous priority and category. Mail that is Important only because it is due now is unaffected.
+
 ## Documents folder browser and uploaded files
 
 The Documents dashboard is a folder browser: it shows one folder at a time, subfolders first, then documents and uploaded files together by name, as cards or rows (the choice is remembered per browser). A breadcrumb leads back up, and the sidebar tree follows the browser: opening a folder, or a document inside one, expands that folder and its parents so the current location is always visible. Starred, tag, and search views keep the flat table because they cut across folders.
