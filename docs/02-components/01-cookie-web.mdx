@@ -222,6 +222,14 @@ Image files show a thumbnail of their bytes in place of the icon, in both the gr
 
 ## Document editing and bounded lists
 
+**Table of contents** in the "/" menu inserts a block that lists the document's headings, indented by level. It stores no content of its own: the list updates as headings change, and choosing an entry moves the caret to that heading. Markdown and HTML exports rebuild it from the headings, with anchor links.
+
+Hovering a heading shows a toggle to the left of **+**. **>** collapses everything under that heading up to the next heading of the same or higher level, and a down arrow expands it again. Collapsed sections are remembered per document in the browser's `localStorage`; they are a view preference only, so the blocks are still saved, exported, and searched. Typing into a hidden block, or jumping to one from the table of contents, expands its section.
+
+Pasting code into a paragraph creates a code block instead of reformatted text. Cookie recognises a multi-line copy from VS Code (using its language mode), a Markdown code fence, a lone `<pre>` from a web page, and monospace pre-formatted HTML from other IDEs. The language comes from the mode, `language-*` style classes, or the fence info, mapped onto the code block's supported languages; anything else becomes plain text. A code block pasted into an empty paragraph replaces it; otherwise it is added after the paragraph.
+
+The document icon picker opens on **Icons**, a built-in set of about 250 Material Symbols icons in themed groups with search, and keeps an **Emoji** tab for the previous emoji picker. Built-in icons render from the self-hosted icon font rather than the operating system's emoji font, so they look the same everywhere. They are stored in the existing `emoji` field as `ms:<icon_name>`; `cookie-web-tasks` accepts `ms:` followed by up to 64 lowercase letters, digits, or underscores, and Cookie-iOS shows them as the closest SF Symbol, falling back to a document symbol.
+
 Plain tables use a lightweight editable grid with row and column controls; **Open spreadsheet** activates formulas and advanced tools. Existing formula tables and workbook snapshots keep the full spreadsheet editor. Offscreen rich editors retain their stored data until activation, and document blocks become interactive only after Editor.js has installed its change observer.
 
 Large mail and document lists render a bounded window, locating visible rows with binary search. Document/task pages are fetched incrementally. Task deep links load the full task before deciding whether it exists; network failures remain retryable. Creating an AI document completes its save without overriding navigation made while creation was pending.
