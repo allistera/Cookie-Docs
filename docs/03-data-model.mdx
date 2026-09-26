@@ -42,7 +42,7 @@ The script creates `schema_migrations` if needed and safely skips files already 
 | Task projects | `0053`, `0054` | Self-nesting project tree; a null project is the static Inbox; project descriptions arrived with task items |
 | User-authored tasks | `0054`, `0057` | Tasks, due dates, completion, project membership, parent/subtask links, and Meilisearch drift watermark |
 | Task labels | `0079` | `task_labels`: one row per user-defined label with a colour, keyed by `(user_id, name)`; `task_items.labels` keeps the names, and a rename or delete rewrites them across tasks in one transaction |
-| Sender screening | `0083` | Private owner/address decisions; independent allowed/held/blocked message disposition assigned before notification queueing, with automatic-reply suppression |
+| Sender screening | `0088` | Private owner/address decisions; independent allowed/held/blocked message disposition assigned before notification queueing, with automatic-reply suppression |
 | Indexing/perf | `0034`, `0035`, `0043`, `0045` | Query and join index cleanups |
 
 :::note

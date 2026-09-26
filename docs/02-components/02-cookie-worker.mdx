@@ -158,7 +158,7 @@ belong to the release operator.
 
 ## Sender decisions and screening
 
-Migration `0083_sender_screening.sql` follows `0082`. Its server-only
+Migration `0088_sender_screening.sql` follows `0087`. Its server-only
 `sender_decisions` table is keyed by `(user_id, address)`, enables RLS and revokes
 all privileges from `PUBLIC`, `anon` and `authenticated`. Values are `accepted`
 or `blocked`. No historical incoming/contact/sent-address backfill occurs.
@@ -221,7 +221,7 @@ deploy `mail-app-ingest`, `cookie-web-notifications`, `cookie-web-send`,
 `cookie-web-messages`, `cookie-web-search`, `cookie-web-ai`, `cookie-web-tasks`,
 `data-enricher`, then `cookie-web-emails` last; then publish the Web interface and Docs.
 The messages/send/ingest Workers consume the changed shared search-index mapping.
-All updated Workers require `0083`; none may deploy before migration success.
+All updated Workers require `0088`; none may deploy before migration success.
 Keep screening and the responder disabled and do not create sender decisions
 throughout the staged rollout. Existing rows and ordinary new arrivals remain
 allowed during that interval. Deploying the decision API last ensures all read,
@@ -230,7 +230,7 @@ retention and delivery guards are active before it can create held mail.
 The Web Checks CI job supplies an isolated PostgreSQL 17 service named
 `cookie_screening_test`. Its migration regression file refuses non-loopback or
 other database names and fails CI if the test connection is missing. It applies
-the actual `0080`, `0082` and `0083` SQL above a small synthetic pre-0080 schema
+the actual `0080`, `0082` and `0088` SQL above a small synthetic pre-0080 schema
 fixture; it does not emulate Supabase realtime infrastructure or execute the
 entire historical migration chain. Worker suites cover authenticated actions,
 notification delivery/retries, responder suppression and lock concurrency.
