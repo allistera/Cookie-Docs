@@ -176,16 +176,30 @@ Ingest never acquires the responder dispatch lock.
 
 Authenticated `GET /emails/senders` returns `{ enabled, decisions, nextCursor }`
 with at most 50 decisions. `after=<address>` pages the normalized address order;
-`address=<address>` reads one exact decision. `PUT /emails/senders` takes an
-`action`: `settings` with boolean `enabled`; `block`, `accept`, `unblock` or
-`forget` with an exact `address`; or `restore` with an owned `messageId`. Block
-can include an owned `messageId` belonging to that sender to withhold the reader's
-message. Malformed/non-exact addresses and mismatched ownership are rejected.
+`address=<address>` reads the one decision that applies to that sender (its own
+row, else the most specific `@domain` row). Decision keys are either an exact
+address or `@domain`, which covers that domain and its subdomains; the database
+resolves them with `effective_sender_decision` (Cookie-Web migration 0089), used
+by the arrival trigger and the notification Workers. `PUT /emails/senders` takes
+an `action`: `settings` with boolean `enabled`; `block`, `accept`, `unblock` or
+`forget` with an `address` (an email address or a bare domain); or `restore` with
+an owned `messageId`. An address on a company domain writes an `@domain` key; an
+address on a public email provider writes an exact-address key, and a bare public
+provider domain is rejected. Accept and Block also delete the named sender's own
+older exact-address row so the new decision applies to it; Unblock and Remove
+delete both the domain key and that row when their decision matches. The
+response returns the key (`address`), its stored `decision`, the `effective`
+decision for the named sender, and `related`, the other sender addresses whose
+held mail moved. Block can include an owned `messageId` belonging to that sender
+to withhold the reader's message. Malformed addresses and mismatched ownership
+are rejected.
 
 Every mutation obtains `lockOutOfOfficeDispatch` first, then ingest's owner lock,
 then the user/message rows. Blocking suppresses replies on all existing inbound
-rows with that owner's exact From address, clears their pending alert events,
-and moves only the selected message and previously-held mail. Acceptance releases
+rows the decision now blocks (those whose own effective decision is blocked),
+clears their pending alert events, and moves only the selected message and
+previously-held mail. Each moved message is re-screened by the decision that
+applies to its own sender. Acceptance releases
 held mail; unblocking returns it to held while screening is enabled or allowed
 otherwise. Restoring one message is refused while its sender remains blocked.
 Read/archive/spam/snooze fields are never changed by these mutations.

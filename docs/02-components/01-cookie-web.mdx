@@ -112,25 +112,30 @@ The banner refreshes when the window gains focus and every minute.
 ## Sender blocking and new-sender screening
 
 Open a received message and expand **Sender controls** to **Block sender**,
-**Unblock sender**, or **Accept sender**. The control shows the exact From address
-being changed. A reader block moves that message and any already-held mail from
-the address into **Blocked**; future arrivals are held there too. Older ordinary
-mail stays in its current folders. Blocking from **Settings → Senders and
-screening** affects future arrivals and already-held mail, without moving the
-older ordinary mailbox. Settings lists both accepted and blocked addresses and
-lets you add or remove a decision.
+**Unblock sender**, or **Accept sender**. Decisions apply to the sender's whole
+domain and its subdomains: blocking `spam@badco.example` also blocks
+`news@mail.badco.example`. Public email providers (gmail.com, outlook.com,
+icloud.com and similar) are the exception; there a decision covers only that
+exact address. A reader block moves that message and any already-held mail the
+decision covers into **Blocked**; future arrivals are held there too. Older
+ordinary mail stays in its current folders. Blocking from **Settings → Senders
+and screening** affects future arrivals and already-held mail, without moving the
+older ordinary mailbox. Settings lists accepted and blocked domains and
+addresses, and lets you add a decision for an address or a bare domain, or
+remove one.
 
 **Screen unknown senders** is optional and off by default. A known sender is
-only an address you explicitly accepted. Previous correspondence, contacts and
-sent mail do not grant trust. Matching trims surrounding spaces and ignores
-letter case; it does not collapse plus aliases, remove dots, trust an entire
-domain or interpret wildcards. Sender decisions support a single ordinary bare
-mailbox address. Unusual addresses that cannot be accepted can still be reviewed
-and restored one message at a time.
+only one whose domain (or, on a public provider, exact address) you explicitly
+accepted. Previous correspondence, contacts and sent mail do not grant trust.
+Matching trims surrounding spaces and ignores letter case; it does not collapse
+plus aliases, remove dots or interpret wildcards. When decisions overlap, an
+exact-address decision wins over its domain, and a subdomain's decision wins
+over its parent domain's. Unusual addresses that cannot be accepted can still be
+reviewed and restored one message at a time.
 
 When screening is enabled, unknown arrivals wait in the sidebar's **New senders**
 view. Open a message to **Accept sender**, **Block sender**, or **Restore this
-message only**. Accept releases all held mail from that exact address and bypasses
+message only**. Accept releases all held mail the decision covers and bypasses
 screening for future arrivals. Restore releases only the selected message and
 does not make the sender known. Unblock removes the block; with screening enabled
 the sender's blocked mail returns to New senders, otherwise it is released.
