@@ -330,9 +330,37 @@ News fetching, news ranking, and per-email task extraction no longer run. Existi
 
 ## Cookie MCP server
 
-`cookie-mcp` is a remote MCP server at `https://mcp.infinitywave.online/mcp` that lets claude.ai and Claude Code work with Cookie mail, labels, drafts, calendar, tasks, and documents through 33 `cookie_` tools. It is an OAuth resource server for Auth0 tokens issued to its own audience (`https://mcp.infinitywave.online/mcp`) and never forwards the client's token. After verifying it, the Worker reaches `cookie-web-emails`, `-messages`, `-labels`, `-search`, `-drafts`, `-send`, `-calendar`, and `-tasks` over service bindings to their `Internal` entrypoint, passing the verified identity as RPC data.
+`cookie-mcp` is a remote MCP server at `https://mcp.infinitywave.online/mcp` that lets MCP clients such as Claude, Codex, and Hermes work with Cookie mail, labels, drafts, calendar, tasks, and documents through 33 `cookie_` tools. It is an OAuth resource server for Auth0 tokens issued to its own audience (`https://mcp.infinitywave.online/mcp`) and never forwards the client's token. After verifying it, the Worker reaches `cookie-web-emails`, `-messages`, `-labels`, `-search`, `-drafts`, `-send`, `-calendar`, and `-tasks` over service bindings to their `Internal` entrypoint, passing the verified identity as RPC data.
 
-Reads are annotated read-only; deletes, `cookie_cancel_scheduled`, and `cookie_send_email` are annotated destructive. Mail and document text is untrusted third-party content, and the server tells the model never to follow instructions inside it. `cookie_send_email` has no guard beyond the send quota. `cookie-mcp` must deploy after the eight Workers it binds; its `Deploy` workflow step is deliberately placed after every `cookie-web-*` step, and a failed step stops the job, so the `all` target already deploys in a safe order. Auth0 setup, connection steps, and the full tool list are in the Cookie-Worker README.
+Reads are annotated read-only; deletes, `cookie_cancel_scheduled`, and `cookie_send_email` are annotated destructive. Mail and document text is untrusted third-party content, and the server tells the model never to follow instructions inside it. `cookie_send_email` has no guard beyond the send quota. `cookie-mcp` must deploy after the eight Workers it binds; its `Deploy` workflow step is deliberately placed after every `cookie-web-*` step, and a failed step stops the job, so the `all` target already deploys in a safe order. Auth0 setup and the full tool list are in the Cookie-Worker README.
+
+### Connect a client
+
+Every client uses the URL `https://mcp.infinitywave.online/mcp` and signs in through Auth0 in a browser with the account that owns the Cookie mailbox; no API key is pasted anywhere. Sign-in works only once the Auth0 setup in the Cookie-Worker README is complete. If Auth0 uses a pre-registered application instead of Client ID Metadata Documents, each client also needs that application's client id. To check a connection, ask the client to list your Cookie labels (`cookie_list_labels`), which is read-only.
+
+**Claude Desktop and claude.ai.** Open Settings, then Connectors, choose **Add custom connector**, name it `Cookie`, and enter the URL. A pre-registered client id goes under **Advanced settings**. Choose **Add**, then **Connect**, and sign in. The connector is shared by claude.ai, Claude Desktop, and the mobile apps on the same account. It is not configured in `claude_desktop_config.json`, which is for local servers.
+
+**Claude Code.** Add the server, then run `/mcp`, select `cookie`, and choose **Authenticate**. A pre-registered client id is passed with `--client-id`.
+
+```sh
+claude mcp add --transport http --scope user cookie https://mcp.infinitywave.online/mcp
+```
+
+**Codex.** Add the server and sign in. A pre-registered client id is passed with `--oauth-client-id` on `codex mcp add`.
+
+```sh
+codex mcp add cookie --url https://mcp.infinitywave.online/mcp
+codex mcp login cookie
+```
+
+**Hermes.** Add the server to `~/.hermes/config.yaml`, run `hermes mcp login cookie`, and use `/reload-mcp` in an open session. A pre-registered client id goes under `oauth.client_id` in the same entry.
+
+```yaml
+mcp_servers:
+  cookie:
+    url: "https://mcp.infinitywave.online/mcp"
+    auth: oauth
+```
 
 ## Commands and validation
 
