@@ -111,18 +111,16 @@ The banner refreshes when the window gains focus and every minute.
 
 ## Sender blocking and new-sender screening
 
-Open a received message and expand **Sender controls** to **Block sender**,
-**Unblock sender**, or **Accept sender**. Decisions apply to the sender's whole
+Sender decisions live in **Settings → Senders and screening**, which lists
+accepted and blocked domains and addresses and lets you add a decision for an
+address or a bare domain, or remove one. Decisions apply to the sender's whole
 domain and its subdomains: blocking `spam@badco.example` also blocks
 `news@mail.badco.example`. Public email providers (gmail.com, outlook.com,
 icloud.com and similar) are the exception; there a decision covers only that
-exact address. A reader block moves that message and any already-held mail the
-decision covers into **Blocked**; future arrivals are held there too. Older
-ordinary mail stays in its current folders. Blocking from **Settings → Senders
-and screening** affects future arrivals and already-held mail, without moving the
-older ordinary mailbox. Settings lists accepted and blocked domains and
-addresses, and lets you add a decision for an address or a bare domain, or
-remove one.
+exact address. Blocking affects future arrivals and already-held mail, which
+move into **Blocked**; older ordinary mail stays in its current folders. The
+reader offers no sender decisions for ordinary mail; held mail is the exception
+described below.
 
 **Screen unknown senders** is optional and off by default. A known sender is
 only one whose domain (or, on a public provider, exact address) you explicitly
@@ -134,8 +132,10 @@ over its parent domain's. Unusual addresses that cannot be accepted can still be
 reviewed and restored one message at a time.
 
 When screening is enabled, unknown arrivals wait in the sidebar's **New senders**
-view. Open a message to **Accept sender**, **Block sender**, or **Restore this
-message only**. Accept releases all held mail the decision covers and bypasses
+view. Opening a held message shows **Accept** and **Block** in the reader's
+toolbar; after a decision the reader moves on to the next message awaiting
+review. Selecting messages in the list offers the same, plus **Restore this
+message only** for a single selection. Accept releases all held mail the decision covers and bypasses
 screening for future arrivals. Mail from an accepted sender (its address or its domain)
 opens with remote images loaded, as Important mail does; other mail keeps them
 behind **Show images**, and held or blocked mail never loads them automatically. Restore releases only the selected message and
