@@ -199,7 +199,7 @@ flowchart TB
     API --> Resend[["Resend"]]
 ```
 
-- **`data-enricher`** runs inbox triage only, using an hourly cron gated by the owner-configured Europe/London schedule (default daily, 09:00–19:00 inclusive), plus on-demand `POST /run`. It triages the last 24 hours of Inbox mail and stores the result in Postgres for AI Today through `cookie-web-tasks`. News generation and per-email task extraction are disabled; existing stored results remain readable.
+- **`data-enricher`** runs inbox triage only, using an hourly cron gated by the owner-configured Europe/London schedule (default daily, 09:00–19:00 inclusive), plus on-demand `POST /run`. It triages the last 24 hours of Inbox mail, plus mail marked done in that time, and stores the result in Postgres for AI Today through `cookie-web-tasks`. News generation and per-email task extraction are disabled; existing stored results remain readable.
 - **On-time delivery** is the `ScheduledSendClock` Durable Object inside `cookie-web-send`: queuing a send arms its single alarm for the earliest pending time, and when it fires the same claim-and-deliver code the flush route uses runs, then re-arms from the next pending send.
 - **`scheduled-send-flusher`** is the safety net behind that alarm. It runs every 15 minutes and calls `POST /send/flush` on `cookie-web-send` over a Cloudflare service binding, which picks up retries, expired leases and anything a lost alarm missed, and runs the housekeeping sweeps. It owns no mail-sending logic itself — `cookie-web-send` claims the due rows and calls Resend.
 

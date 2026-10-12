@@ -322,7 +322,7 @@ Without the `FILES` binding the upload route answers `503`, so a Worker deployed
 
 ## data-enricher
 
-`data-enricher` runs inbox triage only: Reply Needed / Review rows and Noise counts for the last 24 hours of Inbox mail, stored as `daily_digest` summaries. An hourly UTC cron checks the owner's saved Europe/London schedule (default every day, 09:00–19:00 inclusive). The saved model defaults to `gpt-5-nano`.
+`data-enricher` runs inbox triage only: Reply Needed / Review rows and Noise counts for the last 24 hours of Inbox mail plus mail marked done in that time, stored as `daily_digest` summaries. An hourly UTC cron checks the owner's saved Europe/London schedule (default every day, 09:00–19:00 inclusive). The saved model defaults to `gpt-5-nano`.
 
 Authenticated `POST /run`, `POST /run?phase=today`, and the legacy `POST /run?phase=digest` all run the same triage phase. Manual refresh bypasses the schedule gate. `cookie-web-tasks` continues to call the `today` alias, so existing clients need no migration.
 
