@@ -117,7 +117,7 @@ Generation never calls Resend. The user must explicitly review, edit, and send t
 Read through `cookie-web-tasks`'s `GET /tasks`; only inbox triage is rebuilt by `data-enricher`:
 
 - **Suggested to-dos** — Cookie's own Tasks due today or overdue (the same `task_items` the Tasks app edits, served by `cookie-web-tasks`) plus previously extracted action items from important mail, most-pressing first. The enricher no longer extracts new tasks. Completing or rescheduling one here updates it in the Tasks app.
-- **Email triage** — recent Inbox mail divided into **Reply Needed**, **Review**, and **Noise**, rebuilt on the saved Europe/London schedule (default hourly, 09:00–19:00 daily) or on demand.
+- **Email triage** — Inbox mail from the last 24 hours, plus mail marked done in that time, divided into **Reply Needed**, **Review**, and **Noise**, rebuilt on the saved Europe/London schedule (default hourly, 09:00–19:00 daily) or on demand. Recently done mail stays listed, ticked, rather than disappearing from the day's triage.
 - **News round-up** — existing stored snapshots remain readable. The enricher no longer fetches feeds, ranks news, or writes fresh news snapshots.
 
 `POST /tasks/refresh` calls `data-enricher`'s `POST /run?phase=today` over the `ENRICHER` service binding, carrying the shared trigger token and enforcing the configured owner before the triage-only rebuild. The legacy `digest` alias and a request without a phase also run only triage. News and per-email task extraction are excluded from every trigger.
@@ -162,9 +162,9 @@ flowchart LR
 - **Review** shows why the message deserves attention even when no reply is needed.
 - **Noise** never becomes an email row. Cookie counts it locally by category and shows only the summary.
 
-Cookie validates the response after the model call. An unknown ID, duplicate ID, or missing candidate rejects the triage run instead of silently hiding mail. The stored record keeps the legacy `daily_digest` kind and `topics` field so Cookie-Worker and Cookie-Web remain safe to deploy in either order; it also records `email-triage-v1` and the policy source for provenance.
+Cookie validates the response after the model call. An unknown ID, duplicate ID, or missing candidate rejects the triage run instead of silently hiding mail. The stored record keeps the legacy `daily_digest` kind and `topics` field so Cookie-Worker and Cookie-Web remain safe to deploy in either order; it also records `email-triage-v2` and the policy source for provenance.
 
-Triage is a view, not a mailbox mutation. It never sends, archives, or deletes anything. Cookie-Web rechecks cited message IDs against live mailbox state before rendering and drops messages deleted since the snapshot; clicking **Mark all emails as read** is still an explicit user action.
+Triage is a view, not a mailbox mutation. It never sends, archives, or deletes anything. `cookie-web-tasks` rechecks cited message IDs against live mailbox state before rendering: it drops messages deleted or rescheduled since the snapshot, keeps messages marked done within the last 24 hours as done rows (using `messages.archived_at` from migration `0092`), and drops mail done longer ago. The model is told which candidates are already done so the overview can mention what has been handled. Clicking **Mark all emails as read** or a row's **Mark done** is still an explicit user action.
 
 ## Safety boundaries
 
