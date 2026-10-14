@@ -20,7 +20,7 @@ Ten Workers serve Cookie's browser APIs on custom domains; three run from email 
 | `cookie-web-receipts` | HTTP + email clients | authenticated receipt status plus an unauthenticated, flood-guarded tracking pixel |
 | `cookie-web-search` | HTTP | Meilisearch mail/federated search, saved mail views, and mailbox Q&A |
 | `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, automatic replies, cancellation, follow-up state, and `/send/flush` |
-| `cookie-web-tasks` | HTTP + service binding | AI Today, Tasks/projects/subtasks, Documents, preferences, and enricher refresh |
+| `cookie-web-tasks` | HTTP + service binding | AI Today, Tasks/projects/subtasks/labels/saved filters, Documents, preferences, and enricher refresh |
 | `mail-app-ingest` | Email + 15-minute cron | inbound parse/store/forward, classification, indexing, and recovery |
 | `data-enricher` | Hourly cron + HTTP | inbox triage only |
 | `scheduled-send-flusher` | 5-minute cron | invokes `cookie-web-send` to flush due scheduled messages and automatic replies |
