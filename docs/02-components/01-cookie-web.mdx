@@ -205,6 +205,8 @@ Saved filters sit in a Filters section of the Tasks sidebar, between Today and M
 
 Dividers are rules dropped between rows to group them; each can carry a short heading centred on the rule, edited in place.
 
+Settings > Tasks > Todoist mirrors a Todoist account into Tasks. Paste the Todoist API token (Todoist: Settings > Integrations > Developer); `cookie-web-tasks` checks it with Todoist, stores it encrypted and shows only its last four characters. Todoist stays the source of truth: its projects become projects (the Todoist Inbox is Cookie's Inbox), its sections become dividers, and its open tasks arrive with their sub-tasks, labels, priority, due date and time, and repeat rule when Cookie can phrase it. The sync runs on the hour from 07:00 to 20:00 in the Todoist account's time zone while **Sync every hour** is on, and **Sync now** runs it at once and refreshes the Tasks view. The page shows the last run's time, counts (projects, sections, open tasks, completions, removals, skipped) or failure. Tasks completed or deleted in Todoist are completed or removed here; edits made in Cookie to a mirrored task are overwritten by the next run, while tasks added in Cookie are never touched. Disconnecting forgets the token and keeps the mirrored work.
+
 The header search is available across applications and routes to `/search`. `cookie-web-search` federates Meilisearch results from the `messages`, `documents`, and `tasks` indexes, then hydrates owned rows from Postgres. Scope tabs can restrict results to mail, documents, or tasks. Mailbox Q&A remains mail-only.
 
 ## Not important
