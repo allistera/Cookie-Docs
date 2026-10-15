@@ -20,7 +20,7 @@ Ten Workers serve Cookie's browser APIs on custom domains; three run from email 
 | `cookie-web-receipts` | HTTP + email clients | authenticated receipt status plus an unauthenticated, flood-guarded tracking pixel |
 | `cookie-web-search` | HTTP | Meilisearch mail/federated search, saved mail views, and mailbox Q&A |
 | `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, automatic replies, cancellation, follow-up state, and `/send/flush` |
-| `cookie-web-tasks` | HTTP + service binding | AI Today, Tasks/projects/subtasks/labels/saved filters, Documents, preferences, and enricher refresh |
+| `cookie-web-tasks` | HTTP + service binding + hourly cron | AI Today, Tasks/projects/subtasks/labels/saved filters, Todoist sync, Documents, preferences, and enricher refresh |
 | `mail-app-ingest` | Email + 15-minute cron | inbound parse/store/forward, classification, indexing, and recovery |
 | `data-enricher` | Hourly cron + HTTP | inbox triage only |
 | `scheduled-send-flusher` | 5-minute cron | invokes `cookie-web-send` to flush due scheduled messages and automatic replies |
@@ -301,6 +301,12 @@ Meilisearch owns keyword/semantic ranking for three indexes: `messages`, `docume
 
 `GET /search` without `scope` keeps the mail-only response used by existing clients. `scope=all|mail|documents|tasks` returns a federated response for Cookie-Web's unified search page. Subtask text is folded into its top-level task's search document. `POST /ask` remains owner-scoped mailbox retrieval plus an OpenAI answer with sources.
 
+## Todoist sync (`cookie-web-tasks`)
+
+`GET/PUT/DELETE /tasks/todoist` manage one Todoist connection per user: `PUT { token }` verifies the token against Todoist's `GET /api/v1/user`, stores it AES-256-GCM encrypted under the `TODOIST_TOKEN_ENCRYPTION_KEY` secret in `todoist_connections` with the account's email and time zone, and `PUT { enabled }` switches the schedule. `POST /tasks/todoist/sync` runs a sync at once (four per minute per user). The Worker's hourly cron syncs every enabled connection whose local time is between 07:00 and 20:00.
+
+A run (`src/todoistSync.js`) reads projects, sections, open tasks and recent completions, then upserts mirrors keyed by `todoist_id` under the owner's task lock: projects under their parent (the Todoist Inbox maps to the null-project Inbox), sections as `divider` rows named after them, and tasks with inverted priority, normalised labels, due date and time in the task's or account's zone, and a repeat rule when Cookie's recurrence grammar covers it. Mirrors Todoist no longer lists as open are completed (if in the completed list) or deleted; vanished projects are deleted when only mirrors depend on them, otherwise unlinked. Cookie-authored rows (`todoist_id IS NULL`) are never changed. The last run's status and counts are stored on the connection; a rejected token is recorded without a Sentry event. Without the secret the routes answer 501 and the cron is a no-op.
+
 ## Uploaded files (`cookie-web-tasks`)
 
 Files uploaded to Documents are handled by `cookie-web-tasks` under `/files`. Bytes go to the private R2 bucket `cookie-files` (binding `FILES`); metadata goes to `document_files`. Any MIME type is accepted up to 25 MB, with 60 uploads per user per minute.
@@ -388,6 +394,7 @@ npm run dry-run -- --all
 | `SENTRY_DSN` / `SENTRY_ENVIRONMENT` | every Worker | Sanitised error reporting tagged by Worker and operation |
 | `BLOB_READ_WRITE_TOKEN` | ingest and document images | Private Vercel Blob access |
 | `ENRICHER_TRIGGER_TOKEN` | tasks/enricher pair | Protect on-demand AI Today rebuilds |
+| `TODOIST_TOKEN_ENCRYPTION_KEY` | `cookie-web-tasks` | Encrypt stored Todoist API tokens; set once with `wrangler secret put`, not synced by the Deploy workflow |
 | `COOKIE_WEB_FLUSH_TOKEN` / matching send secret | flusher/send pair | Protect `/send/flush` |
 | `EMAIL_FROM` / `RESEND_API_KEY` | `cookie-web-send` | Outbound identity and delivery |
 
