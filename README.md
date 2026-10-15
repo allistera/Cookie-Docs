@@ -6,6 +6,8 @@ the data model, AI features, and operations.
 
 Published at <https://allistera.github.io/Cookie-Docs/>.
 
+Additionally for an interactive architecture view using archify: <https://allistera.github.io/Cookie-Docs/diagrams/system-overview.html/>
+
 ## What is here
 
 - `docs/` holds the content as MDX, one file per page, with `meta.ts` files
