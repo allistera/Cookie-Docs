@@ -301,6 +301,18 @@ Meilisearch owns keyword/semantic ranking for three indexes: `messages`, `docume
 
 `GET /search` without `scope` keeps the mail-only response used by existing clients. `scope=all|mail|documents|tasks` returns a federated response for Cookie-Web's unified search page. Subtask text is folded into its top-level task's search document. `POST /ask` remains owner-scoped mailbox retrieval plus an OpenAI answer with sources.
 
+## Task ordering (`cookie-web-tasks`)
+
+`GET /task-items` lists a project, the Inbox or a label by `position` (Cookie-Web migration `0062`), then `created_at`; Today by `due_date`, then `today_position` (`0063`, `NULL` last), then `position`; and a saved filter by due date with undated rows last, then `position`. `POST /task-items/reorder` saves a drag or keyboard move as the rows in their new order rather than a midpoint between neighbours, so a move is one statement and never runs out of precision; the response lists the rows that changed with their new value.
+
+| Body | Behaviour |
+| --- | --- |
+| `{ ids }` | 1 to 500 distinct task ids. The rows keep the set of `position` values they already held between them, sorted and with any ties pushed `0.001` apart, dealt back out in the requested order; rows outside the set are untouched |
+| `{ ids, view: 'today' }` | Numbers `today_position` 1..n in the requested order |
+| `{ ids, view: 'today', paged: true }` | One page of Today: the rows keep the `today_position` slots they held, with never-arranged rows slotted after the owner's highest, so other pages are untouched |
+
+Ids the caller does not own are simply absent from the read and so cannot move anyone else's task. Any other `view` is a `400`.
+
 ## Todoist sync (`cookie-web-tasks`)
 
 `GET/PUT/DELETE /tasks/todoist` manage one Todoist connection per user: `PUT { token }` verifies the token against Todoist's `GET /api/v1/user`, stores it AES-256-GCM encrypted under the `TODOIST_TOKEN_ENCRYPTION_KEY` secret in `todoist_connections` with the account's email and time zone, and `PUT { enabled?, syncProjects?, syncTasks? }` flips the schedule and the two mirror switches (a flag left out keeps its value). `POST /tasks/todoist/sync` runs a sync at once (four per minute per user). The Worker's hourly cron syncs every enabled connection whose local time is between 07:00 and 20:00.
