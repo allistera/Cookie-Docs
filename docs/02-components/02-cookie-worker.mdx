@@ -307,6 +307,20 @@ Meilisearch owns keyword/semantic ranking for three indexes: `messages`, `docume
 
 A run (`src/todoistSync.js`) reads projects, sections, open tasks and recent completions, then upserts mirrors keyed by `todoist_id` under the owner's task lock: projects under their parent (the Todoist Inbox maps to the null-project Inbox), sections as `divider` rows named after them, and tasks with inverted priority, normalised labels, due date and time in the task's or account's zone, and a repeat rule when Cookie's recurrence grammar covers it. A task in a project the run does not know goes to the Inbox, after the Inbox's own rows. Mirrors Todoist no longer lists as open are completed (if in the completed list) or deleted; vanished projects are deleted when only mirrors depend on them, otherwise unlinked. Cookie-authored rows (`todoist_id IS NULL`) are never changed. With **Sync projects** off (`sync_projects`, migration `0094`) no project row is written, moved or removed and tasks are filed under the mirrored projects Cookie already holds, or the Inbox; with **Sync tasks** off (`sync_tasks`) no section or task row is touched, a vanished project holding tasks is unlinked rather than deleted, only the project list is read from Todoist, and the completion cursor (`tasks_synced_at`) stands still so completions made meanwhile are still found when tasks resume. The last run's status and counts are stored on the connection; a rejected token is recorded without a Sentry event. Without the secret the routes answer 501 and the cron is a no-op.
 
+## Task comments and attachments (`cookie-web-tasks`)
+
+A task's discussion thread lives in `task_comments` (Cookie-Web migration `0096`) and is served under `/task-comments`. Attachment bytes go to the same private R2 bucket as uploads (`cookie-files`, binding `FILES`) under `<user_id>/<uuid>`, with the same 25 MB cap, type sniffing and 60-per-minute rate limit; the row is the source of truth and bytes only ever leave through the attachment route after an ownership check.
+
+| Route | Behaviour |
+| --- | --- |
+| `GET /task-comments?task=<uuid>[&after=<cursor>]` | The thread of one owned task, oldest first, 100 per page with a `nextCursor`. Each entry carries `body`, `attachment` (`name`, `mimeType`, `sizeBytes`, or null), `mine`, `editedAt` and the stamps; the object key is never sent |
+| `POST /task-comments` | `multipart/form-data` with `task`, optional `body` text (up to 10,000 characters) and optional `file`; at least one of the two. The task must be the caller's. The object is written first and removed again if the row insert fails |
+| `PATCH /task-comments/:id` | `{ body?, attachment?: null }` on the caller's own entry: replaces the text, or drops the file from an entry that keeps its text; either stamps `edited_at`. An entry can never be left with neither |
+| `DELETE /task-comments/:id` | Deletes the caller's own entry, then its object; a failed object delete is reported to Sentry, not surfaced |
+| `GET /task-comments/:id/attachment` | The bytes, for the task's owner, served `inline` only for sniffed JPEG, PNG, GIF, WebP and PDF, otherwise as an `attachment`, always with `nosniff` |
+
+`task_comments.task_id` cascades from `task_items`, so deleting a task or a project, or a Todoist run removing a vanished mirror, takes threads with it without the Worker seeing their keys. Each of those paths reads the owner's attachment keys before the delete and, afterwards, removes the objects of the keys that no longer have a row (`attachmentKeysOf` and `deleteVanishedAttachments` in `src/taskComments.js`). Nothing is read back when the owner had no attachments. Without the `FILES` binding a comment with a file answers `503`; text comments still work.
+
 ## Uploaded files (`cookie-web-tasks`)
 
 Files uploaded to Documents are handled by `cookie-web-tasks` under `/files`. Bytes go to the private R2 bucket `cookie-files` (binding `FILES`); metadata goes to `document_files`. Any MIME type is accepted up to 25 MB, with 60 uploads per user per minute.
