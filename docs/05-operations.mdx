@@ -103,3 +103,30 @@ Vercel holds Cookie-Web's browser build and migration settings; the compatibilit
 ## Local-development safety
 
 Never point routine Cookie-Web or Cookie-Worker development at the production Supabase database. Cookie-Web can use fixtures without `DATABASE_URL`; Worker development requires a separate Supabase project. Cookie-Agents is isolated and may use its Docker Compose PostgreSQL volume because it does not share the mail-app schema.
+
+## Review remediation rollout
+
+The October 2026 remediation introduces three additive migrations owned by
+Cookie-Web: 0102 binds Google authorization completion to its original browser
+and account; 0103 records object deletion jobs and document-image references;
+0104 journals outbound delivery attempts and sent-copy reconciliation.
+Apply these through the normal reviewed migration process before deploying the
+corresponding Workers, then deploy the Web client. Existing unbound Google
+authorization attempts must be restarted. Legacy ambiguous scheduled sends
+require review rather than an automatic fresh retry window.
+
+The Processing mailbox keeps mail available when AI classification is deferred
+or unavailable. It does not bypass sender screening, and its warning makes clear
+that spam classification is incomplete. Draft recovery and failed offline edits
+are visible in the client; local copies are scoped to the signed-in account.
+
+Monitor durable delivery reconciliation, object cleanup retries and search-drift
+age after rollout. An accepted delivery with a missing sent copy is repaired
+without contacting the provider to send again. An uncertain delivery needs
+operator review before any replacement send. Preserve the new ledger and queue
+tables during application rollback.
+
+Dependency audits run in pull-request CI. Cookie-Docs has one temporary
+unpatched transitive CLI advisory documented in `SECURITY.md`; its exception
+expires on 20 November 2026. The documentation check workflow builds pull
+requests without deploying GitHub Pages.
