@@ -7,7 +7,8 @@
     "build": "blume build",
     "doctor": "blume doctor",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "audit:dependencies": "node scripts/audit-dependencies.mjs"
   },
   "dependencies": {
     "blume": "^2.0.3",
@@ -24,6 +25,12 @@
     "lodash-es": "4.18.1",
     "@scalar/json-magic": {
       "undici": "7.29.1"
+    },
+    "@tailwindcss/typography": {
+      "postcss-selector-parser": "7.1.7"
+    },
+    "mermaid": {
+      "katex": "0.18.2"
     }
   }
 }
