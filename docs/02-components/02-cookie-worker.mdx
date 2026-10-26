@@ -1,13 +1,13 @@
 ---
 title: Cookie-Worker
-description: Thirteen independently deployable Cloudflare Workers — ten browser/API services and three background processors.
+description: Fifteen independently deployable Cloudflare Workers — eleven browser/API services, the cookie-mcp server, and three background processors.
 ---
 
 Cookie-Worker hosts thirteen independently deployable Cloudflare Workers. A directory under `workers/<name>/` becomes a discoverable Worker capsule by containing a matching `wrangler.jsonc`; root tooling finds it for type generation, checks, dry-runs, and deployment. Shared modules live under `shared/` only when multiple Workers need them.
 
 ## Worker inventory
 
-Ten Workers serve Cookie's browser APIs on custom domains; three run from email or scheduled triggers.
+Eleven Workers serve Cookie's browser APIs on custom domains, cookie-mcp serves the MCP connector, and three run from email or scheduled triggers.
 
 | Worker | Trigger | Purpose |
 | --- | --- | --- |
@@ -25,7 +25,7 @@ Ten Workers serve Cookie's browser APIs on custom domains; three run from email 
 | `data-enricher` | Hourly cron + HTTP | inbox triage only |
 | `scheduled-send-flusher` | 5-minute cron | invokes `cookie-web-send` to flush due scheduled messages and automatic replies |
 
-The ten `cookie-web-*` APIs use custom `*-api.infinitywave.online` domains and keep `workers.dev` enabled for debugging. Their shared CORS policy permits the production SPA, localhost ports, and Vercel preview deployments. Auth0 bearer verification is shared through `shared/auth-jwt.js`; the receipt pixel and bearer-protected send flush are the deliberate authentication exceptions.
+The eleven `cookie-web-*` APIs use custom `*-api.infinitywave.online` domains and keep `workers.dev` enabled for debugging. Their shared CORS policy permits the production SPA, localhost ports, and Vercel preview deployments. Auth0 bearer verification is shared through `shared/auth-jwt.js`; the receipt pixel and bearer-protected send flush are the deliberate authentication exceptions.
 
 ## Composer preferences API
 

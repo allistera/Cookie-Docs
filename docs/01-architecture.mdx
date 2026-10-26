@@ -6,7 +6,7 @@ description: How the Cookie repositories and the Cloudflare, Vercel, Supabase, O
 The Cookie mail application has three runtime repositories that share one database, plus a documentation repository. Cookie-Agents is a fifth, separate runtime with its own database:
 
 - **Cookie-Web** owns the shared schema (`migrations/` lives there), serves the browser SPA from Vercel, and retains the legacy `/api/send` compatibility endpoint.
-- **Cookie-Worker** owns ten browser/API Workers and three background Workers: inbound mail ingestion, overnight AI enrichment, and the scheduled-send clock.
+- **Cookie-Worker** owns eleven browser/API Workers, the cookie-mcp server, and three background Workers: inbound mail ingestion, scheduled inbox triage, and the scheduled-send clock.
 - **Cookie-iOS** is a native client of the Cookie-Web API — it owns no server-side logic or data of its own.
 - **Cookie-Docs** builds this static Blume/MDX site and deploys it to GitHub Pages — it is not on any mail or app request path.
 - **Cookie-Agents** collects Gmail and Todoist data through FastAPI on Render. It neither calls nor shares data with the Cookie mail application.
@@ -68,7 +68,7 @@ same Supabase database.
 | Cookie-Agents API + database | **Render** | Separate Gmail/Todoist collector; not connected to the mail-app schema |
 
 :::note
-The ten browser-facing `cookie-web-*` Workers replace the former Vercel route
+The eleven browser-facing `cookie-web-*` Workers replace the former Vercel route
 families. Most replace `?resource=` multiplexing with clean paths such as
 `/emails/state`, `/send/scheduled`, and `/tasks/refresh`. Cookie-Web still keeps
 `api/send.js` as a compatibility path for its current clients.
@@ -159,7 +159,7 @@ flowchart TB
     end
 
     subgraph CF["Cloudflare"]
-        Workers["10 cookie-web-* APIs<br/>mail · AI · calendar · tasks<br/>search · send · notifications"]
+        Workers["11 cookie-web-* APIs<br/>mail · AI · calendar · tasks<br/>search · send · notifications"]
     end
 
     Services["Supabase · data<br/>Meilisearch · search<br/>OpenAI · AI features<br/>Resend · outbound mail"]
