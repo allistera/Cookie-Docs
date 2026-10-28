@@ -98,7 +98,7 @@ Two cross-Worker pairs must agree:
 
 `cookie-web-tasks` also binds the private R2 bucket `cookie-files` as `FILES` for files uploaded to Documents. Create it once with `wrangler r2 bucket create cookie-files`; the bucket is never made public, and bytes are served only through the Worker's `/files/:id/content` route.
 
-Vercel holds Cookie-Web's browser build and migration settings; the compatibility send adapter forwards delivery to the Worker. Attachment uploads remain on Vercel and require Blob storage, database, and authentication settings. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
+Vercel holds Cookie-Web's browser build and migration settings; the compatibility send adapter forwards delivery to the Worker. Composer attachment uploads go from the browser to `cookie-web-send` directly, so Vercel needs no Blob storage or database settings for them. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
 
 ## Local-development safety
 
