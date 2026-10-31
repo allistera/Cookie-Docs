@@ -11,44 +11,26 @@
     "audit:dependencies": "node scripts/audit-dependencies.mjs"
   },
   "dependencies": {
-    "blume": "^2.0.3",
-    "js-yaml": "^5.4.2"
+    "blume": "^2.2.6",
+    "js-yaml": "^5.5.0"
   },
   "devDependencies": {
-    "prettier": "3.9.9"
+    "prettier": "3.9.10"
   },
   "overrides": {
-    "astro": "^7.3.2",
-    "@vercel/routing-utils": {
-      "path-to-regexp": "6.3.0"
-    },
-    "lodash-es": "4.18.1",
-    "@scalar/json-magic": {
-      "undici": "7.30.1"
+    "@astrojs/react": {
+      "@vitejs/plugin-react": "6.1.1"
     },
     "@tailwindcss/typography": {
       "postcss-selector-parser": "7.1.7"
     },
-    "mermaid": {
-      "katex": "0.18.2"
-    },
-    "@ai-sdk/provider-utils": {
-      "undici": "7.30.1"
-    },
-    "blume": {
-      "undici": "7.30.1"
-    },
-    "unifont": {
-      "undici": "8.12.3"
-    },
     "@vercel/cli-config": {
       "zod": "4.6.7"
     },
-    "zod": "4.6.7",
-    "body-parser": "2.4.0",
-    "fast-uri": "3.1.9",
-    "hono": "4.13.14",
-    "ip-address": "10.7.5",
-    "vite": "8.3.5"
+    "@vercel/routing-utils": {
+      "path-to-regexp": "6.3.0"
+    },
+    "glob": "14.0.3",
+    "minimatch": "11.0.3"
   }
 }
