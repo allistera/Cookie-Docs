@@ -173,9 +173,9 @@ Each view opens `/search` with its query, `scope=mail`, `mode=keyword`, and a st
 
 The [saved-view API contract](/components/cookie-worker#saved-mail-views-api) describes the revision check and limits.
 
-## Today's events in the inbox
+## Today's events in AI Today
 
-While browsing the Inbox (not a filter or a search), the day's calendar events head the list as a **Today's Events** group in the same style as the day groups: it appears only when any calendar has an event today, shows the count in its header, and collapses from the header like the others. All-day events come first, then the rest in start order, each row carrying its calendar's colour and name and fading once the event is over. Clicking a row opens the event in Calendar. The group and the next-event chip beside the tabs share one request for the day's events, refreshed every five minutes, on focus, and at midnight; if the calendar Worker is unreachable both simply disappear.
+AI Today opens with a **Today's Events** card above the suggested to-dos whenever any calendar has an event today; the classic Inbox lists mail only, keeping just the next-event chip beside its tabs. The card uses the same shape as the to-dos card: a header, then one row per event with its calendar's colour dot where the checkbox would be, the time (**All day** or start and end), the title, the calendar's name, and an **Open** button that opens the event in Calendar. All-day events come first, then the rest in start order, and events already over read quieter like done mail. The card and the next-event chip share one request for the day's events, refreshed every five minutes, on focus, and at midnight; if the calendar Worker is unreachable both simply disappear.
 
 ## Calendar sidebar
 
