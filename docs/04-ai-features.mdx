@@ -116,6 +116,7 @@ Generation never calls Resend. The user must explicitly review, edit, and send t
 
 Read through `cookie-web-tasks`'s `GET /tasks`; only inbox triage is rebuilt by `data-enricher`:
 
+- **Today's Events** — the day's calendar events from `GET /calendar-events`, shown only when there is at least one, each opening in Calendar. This is a read of the calendar Worker, not an AI feature; see [Today's events in AI Today](/components/cookie-web#todays-events-in-ai-today).
 - **Suggested to-dos** — Cookie's own Tasks due today or overdue (the same `task_items` the Tasks app edits, served by `cookie-web-tasks`) plus previously extracted action items from important mail, most-pressing first. The enricher no longer extracts new tasks. Completing or rescheduling one here updates it in the Tasks app.
 - **Email triage** — Inbox mail from the last 24 hours, plus mail marked done in that time, divided into **Reply Needed**, **Review**, and **Noise**, rebuilt on the saved Europe/London schedule (default hourly, 09:00–19:00 daily) or on demand. Recently done mail stays listed, ticked, rather than disappearing from the day's triage.
 - **News round-up** — existing stored snapshots remain readable. The enricher no longer fetches feeds, ranks news, or writes fresh news snapshots.
