@@ -16,7 +16,7 @@ Eleven Workers serve Cookie's browser APIs on custom domains, cookie-mcp serves 
 | `cookie-web-emails` | HTTP | keyset-paginated `/emails` lists, `/emails/state` bootstrap, composer preferences, and out-of-office settings |
 | `cookie-web-labels` | HTTP | label and label-rule CRUD |
 | `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, and contacts |
-| `cookie-web-notifications` | HTTP | `/notification-event` claim/ack lease for browser notifications |
+| `cookie-web-notifications` | HTTP + cron | `/notification-event` claim/ack lease for browser notifications; `/ntfy` settings (per-user server, topic and encrypted access token) and the every-minute publish of queued new-mail alerts to each user's ntfy server |
 | `cookie-web-receipts` | HTTP + email clients | authenticated receipt status plus an unauthenticated, flood-guarded tracking pixel |
 | `cookie-web-search` | HTTP | Meilisearch mail/federated search, saved mail views, and mailbox Q&A |
 | `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, automatic replies, cancellation, follow-up state, and `/send/flush` |
