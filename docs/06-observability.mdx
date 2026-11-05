@@ -1,0 +1,150 @@
+---
+title: Observability
+description: Where Cookie's errors, traces, metrics, logs and health signals go, what each one contains, and which to open first when something breaks.
+---
+
+Cookie runs on free and pay-per-use tiers, so observability is deliberately small: one Sentry project for errors, metrics and browser telemetry, Honeycomb for Worker traces, the platforms' own log views, and a handful of checks that turn a silent failure into a Sentry issue. Every signal follows the same privacy rule — operation names, outcomes, counts, status codes and durations leave the system; mail content, addresses, user identity, URLs with tokens, SQL parameters and secrets never do.
+
+## Signals at a glance
+
+| Component | Errors | Traces | Metrics | Logs | Health |
+| --- | --- | --- | --- | --- | --- |
+| Cookie-Web (browser) | Sentry via the same-origin `/monitoring` tunnel, with Session Replay | Sentry browser tracing, 10% of page loads and navigations, Web Vitals | `web.operations`, `web.operation.duration` | Vercel function logs for the residual `/api/*` functions | `GET /api/health` aggregates Postgres, Meilisearch and twelve Workers |
+| Cookie-Worker (15 Workers) | Sentry, `service` and `operation` tags | Cloudflare automatic traces exported to Honeycomb, one dataset per Worker | `worker.invocations`, `worker.duration` | Structured JSON lines in Cloudflare Workers Logs | `GET /health` on the eleven `cookie-web-*` APIs and `cookie-mcp`; Sentry cron monitors and inbound-health checks on `mail-app-ingest` |
+| Cookie-iOS | None — the app ships no crash-reporting SDK; failures surface in the Worker APIs it calls | — | — | None | — |
+| Cookie-Agents | Structlog and OpenTelemetry inside its own Render service | OpenTelemetry | — | Structlog output in Render's service logs | `GET /health` (liveness plus database connectivity) |
+| Cookie-Docs | — | — | — | GitHub Actions build logs | — |
+
+Browser traces stay in Sentry and Worker traces stay in Honeycomb. The browser never forwards tracing headers to the APIs (`tracePropagationTargets: []`), so a slow page and the Worker request behind it are correlated by time and route, not by a shared trace ID.
+
+## Error reporting with Sentry
+
+All Workers and the browser report to the same Sentry project, hosted in Sentry's EU region. One project stays readable because every event carries a `service` tag: `cookie-web` for the browser, the Worker name for everything else. Captured Worker failures add an `operation` tag, and Workers with more than one trigger add `trigger` (`scheduled` or `http`) so a cron failure and a manual `POST /run` failure stay distinguishable.
+
+### Workers
+
+The shared policy lives in Cookie-Worker's `shared/sentry.js`; each Worker adds a thin `src/sentry.js` naming itself and listing the secrets it holds.
+
+- Uncaught failures are captured by `Sentry.withSentry`. Failures a Worker catches on purpose go through `captureHandledException(service, operation, err)`, which also attaches the error to the active trace span.
+- Conditions detected without an exception (a feed that has gone quiet, a routing rule that changed) are reported with `captureHandledMessage` under a fixed fingerprint, so repeats on later cron ticks stay one issue.
+- Every Sentry data-collection category is switched off explicitly: user identity, cookies, headers, bodies, query parameters, AI inputs and outputs, database query data and stack-frame variables. Request, user and breadcrumb fields are removed in `beforeSend`.
+- Connection strings and API tokens are stripped from messages and stack traces before capture, and from the structured log lines beside them.
+- Without `SENTRY_DSN` the client is disabled, so local development and dry runs report nothing. A `wrangler dev` session that does have a DSN is still kept out: events whose frames point at a `.wrangler/tmp` bundle are dropped.
+- `tracesSampleRate` is `0` everywhere except `cookie-web-ai`, which samples its model calls at 100%. Its OpenAI Responses requests emit `gen_ai.chat` spans with model names, latency, failures and token totals, grouped in Sentry Conversations by the per-session UUID the clients send. Transcripts stay empty: prompts, responses and document content are never recorded.
+
+### Browser
+
+Cookie-Web loads `@sentry/vue` lazily after the app mounts, so monitoring never delays the inbox. A temporary Vue error handler buffers up to 20 errors until the SDK is ready. Development, E2E runs and builds without a DSN never initialise it.
+
+- Envelopes are posted to the same-origin `/monitoring` path, which `vercel.json` rewrites to the project's Sentry envelope endpoint. Ad and privacy blockers cancel direct requests to `*.ingest.sentry.io`, so without the tunnel those browsers' errors would never arrive.
+- Outgoing events are rebuilt from an allowlist rather than filtered: standard error types, same-origin `/assets/*.js` stack locations with line and column, validated source-map debug IDs, release and environment. Messages, breadcrumbs, request metadata, Vue props and free-form context are dropped. This trades error-message detail for mailbox privacy.
+- The release is the Vercel commit SHA and the environment is `VERCEL_ENV` (`production` or `preview`). When `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` and `SENTRY_PROJECT` are present at build time the Vite plugin uploads hidden source maps and deletes them from `dist/` before deployment.
+- Session Replay records a masked copy of the page: all text and inputs become asterisks, media is blocked, `alt`, `title`, `placeholder` and `aria-label` are masked, and the sandboxed email iframe is a blank box. Page, navigation and API URLs are removed from each segment before upload. 10% of sessions are recorded and every session with an error is kept from its buffered start. The Sentry Developer plan includes 50 replays a month and drops the rest without charge.
+- Browser profiling is off: Sentry sells UI profile hours only through a pay-as-you-go budget, so with none configured every profile chunk was rejected.
+
+## Tracing with Honeycomb
+
+Every Worker except `cookie-web-calendar` exports Cloudflare's automatic Workers traces over OTLP to Honeycomb (EU), one dataset per Worker, through the `honeycomb-traces` destination configured in the Cloudflare dashboard. The endpoint and API key live in that destination, not in the repository; each `wrangler.jsonc` only names it in its `observability.traces` block. No OpenTelemetry SDK is installed in the Workers.
+
+Cloudflare records the handler invocation, every outbound `fetch` and every `hyperdrive_connect`. Cookie-Worker's `shared/tracing.js` adds what those leave out, and all of it is a no-op when an invocation is not sampled:
+
+- Request spans are renamed from the bare method to `GET /messages/{id}` and carry `http.route`, so `/health` probes and real routes can be told apart. Identifier segments (UUIDs, numbers, hex IDs, long tokens) become `{id}` and never reach the trace.
+- Each Postgres query made through `createSql` is a span named after its operation (`SELECT`, `INSERT`, `COMMIT`) with the OpenTelemetry database attributes, the row count and, on failure, `error.type` (the SQLSTATE or driver code). Query text and parameters are never recorded (`shared/db-tracing.js`).
+- A failure the Worker caught and reported to Sentry is attached to the invocation span as an exception with `error.type` and `cookie.error.operation`, without marking the span failed.
+- `mail-app-ingest` records the outcome of each delivery (`cookie.ingest.*`, `cookie.forward.outcome`) as counts and flags.
+
+Head sampling is set per Worker and applies to logs and traces alike:
+
+| Head sampling rate | Workers |
+| --- | --- |
+| 100% | `mail-app-ingest`, `data-enricher`, `cookie-web-ai`, `cookie-web-send` |
+| 20% | `cookie-web-emails`, `cookie-web-messages`, `cookie-web-labels`, `cookie-web-search`, `cookie-web-drafts`, `cookie-web-tasks`, `cookie-web-notifications`, `cookie-web-receipts`, `cookie-mcp`, `scheduled-send-flusher` |
+| Traces off, invocation logs off | `cookie-web-calendar` — its feed URLs carry bearer tokens, and Cloudflare's automatic logs and traces record request URLs. Only the Worker's own sanitised log lines, metrics and Sentry events remain. Do not add full-URL logging, request tracing or URL-bearing Logpush exports for it without redacting `token` first |
+
+Cloudflare's own `email` span carries `cloudflare.email.from` and `cloudflare.email.to`; the runtime sets those and the Workers cannot change them.
+
+## Application metrics
+
+Both runtimes emit a small fixed set of Sentry application metrics through the existing DSN. They are independent of trace and log sampling, and a `beforeSendMetric` filter admits only these names and attributes, so a stray attribute cannot leak content into a dashboard.
+
+| Metric | Type | Emitted by | Attributes |
+| --- | --- | --- | --- |
+| `worker.invocations` | counter | every Worker, around each `fetch`, `scheduled`, `email` and `queue` handler | `service`, `trigger`, `outcome` (`success` or `error`), HTTP `status` where applicable |
+| `worker.duration` | distribution, milliseconds | every Worker | same as above; measures handler completion, not detached `waitUntil` work |
+| `web.operations` | counter | the browser, around route readiness, reader readiness, message-body loading, search and store requests | `service: cookie-web`, `operation` |
+| `web.operation.duration` | distribution, milliseconds | the browser | same as above |
+
+A 5xx response or a thrown exception has outcome `error`; every other returned response is `success`, so use `status` to see 4xx traffic. Up to 100 early browser timings are buffered while the lazy SDK loads. The metrics appear in Sentry's Application Metrics view; releases before the environment and release labels were added only show up with the environment filter cleared.
+
+## Logs
+
+Workers write one JSON object per line with an `event` name and counts, read in the Cloudflare dashboard's Workers Logs view or with `wrangler tail`. Sampling follows the table above. Events worth knowing by name:
+
+| Event | Worker | Meaning |
+| --- | --- | --- |
+| `stored`, `store_skipped_oversize` | `mail-app-ingest` | A message was stored, or forwarded without storage because it exceeded the 10 MiB parse cap |
+| `ai_enriched`, `ai_recovery_complete` | `mail-app-ingest` | Classification finished; the 15-minute cron finished its recovery pass |
+| `spam_purged` | `mail-app-ingest` | The retention sweep soft-deleted old spam (logged only on ticks that delete something) |
+| `search_drift_swept`, `search_drift_sweep_failed`, `search_drift_sweep_misconfigured` | `mail-app-ingest` | The drift sweep's `selected`, `indexed` and `failed` counts — check `failed`, not just the presence of the line |
+| `object_cleanup` | `cookie-web-tasks` | Processed, retained, failed, pending and oldest-seconds counts for the deletion queue, without object paths |
+| `mcp_tool`, `mcp_handler_error` | `cookie-mcp` | One line per tool call with name, outcome and duration; SDK-level failures with the error name. Arguments and results are never logged |
+
+OpenAI calls from the seven AI-calling Workers go through the Cloudflare AI Gateway named by `AI_GATEWAY_ID`, which keeps per-request logs and cost tracking in the Cloudflare dashboard without any change to the request shape or the `OPENAI_API_KEY` secret.
+
+Cookie-Web's remaining Vercel functions (`/api/send`, `/api/health`) log to Vercel's runtime log view. The browser itself collects no logs: Sentry log collection is disabled, and `console` output stays on the user's machine.
+
+## Health and silent failures
+
+Errors are easy to notice; work that quietly stops is not. Three mechanisms cover that gap.
+
+**Readiness.** `GET /api/health` on Cookie-Web (`HEAD` for status only) runs its checks in parallel with a three-second deadline each: a read-only Postgres `SELECT 1`, Meilisearch `/health`, and the `/health` routes on the eleven `cookie-web-*` Workers and `cookie-mcp`. It returns `200` with `status: "ok"`, or `503` with `status: "degraded"` and a status per failed dependency, with `Cache-Control: no-store` and no other content. Worker probes check liveness only; they do not authenticate, send mail, call AI providers or verify scheduled jobs.
+
+```sh
+curl -i https://mail.infinitywave.online/api/health
+```
+
+**Cron monitors.** `mail-app-ingest` wraps its scheduled work in two Sentry cron monitors, `mail-app-ingest-sweeps` (every 15 minutes) and `mail-app-ingest-workspace-search-drift` (at 7, 22, 37 and 52 past the hour). Sentry creates each monitor on its first check-in, and a cron that stops running shows as a missed check-in in Sentry Crons.
+
+**Inbound health.** After its sweeps, the 15-minute run checks three conditions and reports each failure as an error-level Sentry message with a fixed fingerprint:
+
+| Issue | Fingerprint | Condition | Tunable |
+| --- | --- | --- | --- |
+| Inbound mail has gone quiet | `inbound-stale` | Newest stored inbound message is older than the threshold. The default sits above the observed p99 gap of 6.4 hours, but natural quiet spells of 16 to 20 hours have occurred and will alert | `INBOUND_STALE_HOURS` (default 12) |
+| Message enrichment has stayed pending | `pending-enrichment` | A classification has been pending longer than the threshold | `PENDING_ENRICHMENT_MAX_MINUTES` (default 60) |
+| Catch-all email routing no longer delivers to mail-app-ingest | `email-routing-drift` | The zone's catch-all rule is disabled or no longer names this Worker | Needs `CLOUDFLARE_EMAIL_ROUTING_TOKEN` and `EMAIL_ROUTING_ZONE_ID`; skipped with one log line otherwise |
+
+A check that cannot run is reported as an `inbound_health` exception. The checks never throw and never block the sweeps, and the owner's address is never sent to Sentry.
+
+:::note
+Nothing in the repositories configures an external uptime monitor. `/api/health` is designed to be polled by one, but today a Vercel or Cloudflare outage that stops every Worker at once is noticed through Sentry's missed cron check-ins and the inbound-stale issue, not through a ping.
+:::
+
+## Where to look first
+
+| Symptom | Open first | Then |
+| --- | --- | --- |
+| Mail has stopped arriving | The `inbound-stale` or `email-routing-drift` issue in Sentry | `mail-app-ingest` Workers Logs for `stored` events, the Cloudflare Email Routing catch-all rule, and the inbound mail steps in Cookie-Worker's `RUNBOOK.md` |
+| Classification stuck, AI features failing | The `pending-enrichment` issue and `service:cookie-web-ai` issues in Sentry | AI Gateway logs for the upstream status, then `OPENAI_API_KEY` and the shared AI budget |
+| An API route is slow | The Worker's Honeycomb dataset, grouped by `http.route` | Its `SELECT` and `hyperdrive_connect` child spans; `worker.duration` by `service` for the trend |
+| A browser error report | The Sentry issue with `service:cookie-web`, and its linked replay | The release tag against the deployed commit; the same route in Vercel function logs if `/api/*` was involved |
+| Scheduled work went silent | Sentry Crons for a missed check-in | The Worker's `scheduled` metrics (`trigger:scheduled`) and Workers Logs for the tick |
+| Search results missing or stale | `search_drift_swept` lines with non-zero `failed` | The `Search Drift Repair` and `Search Reindex` workflows described in [Operations](/operations#search-operations) |
+| Readiness returns 503 | The per-dependency status in the `/api/health` body | The named Worker's `/health` directly, then Hyperdrive and Meilisearch |
+
+## Configuration
+
+| Name | Where | Purpose |
+| --- | --- | --- |
+| `SENTRY_DSN` | GitHub secret synchronised by the Worker `Deploy` workflow; Vercel for the browser build | Enables reporting; absent locally so development stays out of the project |
+| `SENTRY_ENVIRONMENT` | Each `wrangler.jsonc` | Environment tag on Worker events |
+| `VERCEL_ENV`, `VERCEL_GIT_COMMIT_SHA` | Vercel build | Browser environment and release; `VITE_SENTRY_*` overrides remain supported |
+| `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Vercel build | Source-map upload only; never exposed through `VITE_` |
+| `/monitoring` rewrite | `vercel.json` | Same-origin tunnel to the Sentry envelope endpoint; update it if the organisation or project changes |
+| `honeycomb-traces` destination | Cloudflare dashboard | Honeycomb OTLP endpoint and API key for Worker traces |
+| `observability` block | Each `wrangler.jsonc` | Log and trace sampling per Worker |
+| `AI_GATEWAY_ID`, `CLOUDFLARE_ACCOUNT_ID` | AI-calling Workers' vars | Route OpenAI calls through AI Gateway for logs and cost tracking |
+| `INBOUND_STALE_HOURS`, `PENDING_ENRICHMENT_MAX_MINUTES` | `mail-app-ingest` vars | Inbound health thresholds |
+| `CLOUDFLARE_EMAIL_ROUTING_TOKEN`, `EMAIL_ROUTING_ZONE_ID` | `mail-app-ingest` secret and var | Email routing drift check |
+| `DATABASE_URL` | Vercel | The Postgres check inside `/api/health` |
+
+Live ingestion into Sentry and Honeycomb is not verified by CI in either repository: a successful envelope response proves transport acceptance, not dashboard visibility. After a monitoring change, trigger a temporary error or a request and confirm it in the dashboard by `service` and release.

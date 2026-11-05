@@ -69,7 +69,7 @@ Cookie-Worker deploy validation always checks the whole repository before publis
 2. Run the Cookie-Worker validation suite and a selected-worker dry-run.
 3. Dispatch `Deploy` with `all` or the exact directory name under `workers/`.
 4. Verify the changed path in production. For inbound mail, confirm forwarding, durable storage, classification, and indexing; for browser APIs, confirm Auth0, CORS, and the custom domain; for service bindings, verify both caller and target logs.
-5. Inspect Sentry by `service` and `operation` tags.
+5. Inspect Sentry by `service` and `operation` tags, and the Worker's Honeycomb dataset for latency. [Observability](/observability) lists every signal and where it lands.
 
 Cookie-Worker's `RUNBOOK.md` contains the detailed production, search-repair, rotation, incident, and rollback checklists.
 
