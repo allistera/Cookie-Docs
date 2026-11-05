@@ -67,7 +67,7 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 | `calendar-api` / `cookie-web-calendar` | calendar/event CRUD, subscriptions, sync, AI interpretation, and `POST /calendar-availability` |
 | `search-api` / `cookie-web-search` | `GET /search` for mail or federated scopes; `GET/PUT /saved-views`; `POST /ask` for mailbox Q&A |
 | `tasks-api` / `cookie-web-tasks` | AI Today, task projects/items/subtasks, documents, uploaded files (`/files`), preferences, and refresh |
-| `notifications-api` / `cookie-web-notifications` | `POST /notification-event` claim/ack |
+| `notifications-api` / `cookie-web-notifications` | `POST /notification-event` claim/ack; `GET/PUT/POST/DELETE /ntfy` and `POST /ntfy/test` for ntfy settings |
 | `receipts-api` / `cookie-web-receipts` | authenticated status reads and the unauthenticated tracking pixel |
 | `send-api` / `cookie-web-send` | deployed Cloudflare send/schedule API; scheduled flusher calls `/send/flush` over a service binding |
 | Vercel `mail.infinitywave.online` | current web-client compatibility calls to `/api/send` for send, schedule, cancel, and follow-up reminders |
@@ -160,6 +160,26 @@ suppresses pending alerts/replies to existing mail from that displayed From
 address, even if its envelope sender differs. A browser alert or provider request
 already handed off cannot be recalled. Blocking does not unsubscribe, reject
 inbound delivery, change original forwarding, or restrict manual replies/sends.
+
+## ntfy notifications
+
+Settings → Notifications → **ntfy notifications** sends a push notification for
+each new email through [ntfy](https://ntfy.sh). Enter the ntfy server (ntfy.sh
+or a self-hosted server, as an `https://` address) and the topic you subscribe
+to in the ntfy app, add an access token when the topic is reserved or the server
+requires sign-in, and save. Saving turns delivery on; the switch pauses it with
+the settings kept, and **Send test notification** publishes a test message at
+once. **Generate** fills in a random, hard-to-guess topic.
+
+Topics follow ntfy's rule (1 to 64 letters, digits, hyphens or underscores), and
+two Cookie accounts cannot share a topic on one server. The access token is sent
+to the `cookie-web-notifications` Worker once, stored encrypted there, and never
+shown again; Settings only shows its last four characters. When the Worker has
+no `NTFY_TOKEN_ENCRYPTION_KEY`, the token field is hidden and the topic must
+accept anonymous publishing. Each alert carries the subject, a truncated
+plain-text body and a link back to the email; held, blocked, muted and
+category-silenced mail produces none. Migration `0110_ntfy_user_servers.sql`
+adds the per-user server and token columns.
 
 ## Saved mail views
 
