@@ -52,6 +52,8 @@ Cloudflare records the handler invocation, every outbound `fetch` and every `hyp
 - Each Postgres query made through `createSql` is a span named after its operation (`SELECT`, `INSERT`, `COMMIT`) with the OpenTelemetry database attributes, the row count and, on failure, `error.type` (the SQLSTATE or driver code). Query text and parameters are never recorded (`shared/db-tracing.js`).
 - A failure the Worker caught and reported to Sentry is attached to the invocation span as an exception with `error.type` and `cookie.error.operation`, without marking the span failed.
 - `mail-app-ingest` records the outcome of each delivery (`cookie.ingest.*`, `cookie.forward.outcome`) as counts and flags.
+- `cookie-web-search`, and the document search in `cookie-web-tasks`, describe each search on its request span as `cookie.search.*`: `scope` (`mail`, `all`, `documents`, `tasks`, `ask`), `federated`, `mode` (`hybrid` or `keyword`), `has_text`, `filters` (operator count), `legs` (the indexes queried), `hits`, `hydrated`, `estimated_total`, `verified`, `verified_batches` and `outcome` (`ok`, `empty_query`, `skipped`, `invalid`, `meili_transient`, `meili_rejected`). Query text never reaches the trace. Hits that did not hydrate from Postgres are stale index entries; zero hits on a hybrid query is a relevance question, not an availability one. The response's `Server-Timing` header splits `meili` (retrieval) from `hydrate` (Postgres) beside `total`.
+- The `mail-app-ingest` cron records what its search repair left behind: `cookie.search.<index>.backlog`, `cookie.search.<index>.backlog_age_seconds` and `cookie.search.failed_tasks`.
 
 Head sampling is set per Worker and applies to logs and traces alike:
 
@@ -85,7 +87,10 @@ Workers write one JSON object per line with an `event` name and counts, read in 
 | `stored`, `store_skipped_oversize` | `mail-app-ingest` | A message was stored, or forwarded without storage because it exceeded the 10 MiB parse cap |
 | `ai_enriched`, `ai_recovery_complete` | `mail-app-ingest` | Classification finished; the 15-minute cron finished its recovery pass |
 | `spam_purged` | `mail-app-ingest` | The retention sweep soft-deleted old spam (logged only on ticks that delete something) |
-| `search_drift_swept`, `search_drift_sweep_failed`, `search_drift_sweep_misconfigured` | `mail-app-ingest` | The drift sweep's `selected`, `indexed` and `failed` counts — check `failed`, not just the presence of the line |
+| `search_drift_swept`, `search_drift_sweep_failed`, `search_drift_sweep_misconfigured` | `mail-app-ingest` | The message drift sweep's `selected`, `indexed` and `failed` counts, and `backlog`, the messages still unindexed after the tick — check `failed` and `backlog`, not just the presence of the line |
+| `workspace_search_drift_swept`, `workspace_search_drift_failed` | `mail-app-ingest` | The document and task repair's counts per `target`, with `backlog` and `backlog_age_seconds` for what remains after the tick |
+| `meili_tasks_failed`, `meili_tasks_check_failed` | `mail-app-ingest` | Indexing tasks Meilisearch itself failed in the last 15 minutes (count plus one sample's index, type, error code and task uid), or a lookup that could not run |
+| `message_search_meili_failed`, `federated_search_meili_failed`, `document_search_meili_failed` | `cookie-web-search`, `cookie-web-tasks` | A search that returned 503, with `transient` saying whether the tunnel or Meilisearch itself answered. Each is also a Sentry issue under `meili_search_transient` or `meili_search_rejected`, so the sampled log line is not the only record |
 | `object_cleanup` | `cookie-web-tasks` | Processed, retained, failed, pending and oldest-seconds counts for the deletion queue, without object paths |
 | `mcp_tool`, `mcp_handler_error` | `cookie-mcp` | One line per tool call with name, outcome and duration; SDK-level failures with the error name. Arguments and results are never logged |
 
@@ -115,6 +120,16 @@ curl -i https://mail.infinitywave.online/api/health
 
 A check that cannot run is reported as an `inbound_health` exception. The checks never throw and never block the sweeps, and the owner's address is never sent to Sentry.
 
+**Search health.** Each search repair tick also measures what it left behind, so the index cannot rot while every tick reports success. Past a threshold it raises an error-level Sentry message under the `search_health` operation with a fixed fingerprint per condition:
+
+| Issue | Fingerprint | Condition | Tunable |
+| --- | --- | --- | --- |
+| Message repair is falling behind | `messages-backlog` | More unindexed messages remain after a tick than the sweep drains in an hour (five ticks of 200). Messages have no change time, so their backlog is a count | `SEARCH_BACKLOG_MAX_ROWS` (default 1000) |
+| Document or task repair is falling behind | `documents-stale`, `task_items-stale` | The oldest unindexed change is older than the threshold after a tick, so four oldest-first ticks have passed it over. For a task, the change is the newer of its own edit and its latest sub-task edit | `SEARCH_STALE_MAX_MINUTES` (default 60) |
+| Meilisearch failed indexing tasks | `meili-task-failures` | Meilisearch reports tasks with status `failed` enqueued in the last 15 minutes: a document it cannot index, or an embedder call OpenAI refused. Writers that do not wait for their task never learn of this, so it is where an embedder outage first shows | None; a failing lookup is a `meili_tasks_check` exception |
+
+A Meilisearch failure on a search request is reported on its first occurrence as `meili_search_transient` (a gateway answer from the tunnel) or `meili_search_rejected` (a verdict from Meilisearch itself, such as a filter on an attribute the index does not declare filterable), with `scope` and `mode` in the extra. Cookie-Worker's `RUNBOOK.md` describes what to do for each.
+
 :::note
 Nothing in the repositories configures an external uptime monitor. `/api/health` is designed to be polled by one, but today a Vercel or Cloudflare outage that stops every Worker at once is noticed through Sentry's missed cron check-ins and the inbound-stale issue, not through a ping.
 :::
@@ -128,7 +143,8 @@ Nothing in the repositories configures an external uptime monitor. `/api/health`
 | An API route is slow | The Worker's Honeycomb dataset, grouped by `http.route` | Its `SELECT` and `hyperdrive_connect` child spans; `worker.duration` by `service` for the trend |
 | A browser error report | The Sentry issue with `service:cookie-web`, and its linked replay | The release tag against the deployed commit; the same route in Vercel function logs if `/api/*` was involved |
 | Scheduled work went silent | Sentry Crons for a missed check-in | The Worker's `scheduled` metrics (`trigger:scheduled`) and Workers Logs for the tick |
-| Search results missing or stale | `search_drift_swept` lines with non-zero `failed` | The `Search Drift Repair` and `Search Reindex` workflows described in [Operations](/operations#search-operations) |
+| Search returns errors | The `meili_search_transient` or `meili_search_rejected` issue in Sentry | `/api/health` for Meilisearch reachability; the `cookie-web-search` Honeycomb dataset filtered to `cookie.search.outcome` |
+| Search results missing or stale | The `search_health` issues in Sentry (`messages-backlog`, `documents-stale`, `task_items-stale`, `meili-task-failures`) | `search_drift_swept` and `workspace_search_drift_swept` lines for `failed` and `backlog`, then the `Search Drift Repair` and `Search Reindex` workflows described in [Operations](/operations#search-operations) |
 | Readiness returns 503 | The per-dependency status in the `/api/health` body | The named Worker's `/health` directly, then Hyperdrive and Meilisearch |
 
 ## Configuration
@@ -144,6 +160,7 @@ Nothing in the repositories configures an external uptime monitor. `/api/health`
 | `observability` block | Each `wrangler.jsonc` | Log and trace sampling per Worker |
 | `AI_GATEWAY_ID`, `CLOUDFLARE_ACCOUNT_ID` | AI-calling Workers' vars | Route OpenAI calls through AI Gateway for logs and cost tracking |
 | `INBOUND_STALE_HOURS`, `PENDING_ENRICHMENT_MAX_MINUTES` | `mail-app-ingest` vars | Inbound health thresholds |
+| `SEARCH_BACKLOG_MAX_ROWS`, `SEARCH_STALE_MAX_MINUTES` | `mail-app-ingest` vars | Search health thresholds |
 | `CLOUDFLARE_EMAIL_ROUTING_TOKEN`, `EMAIL_ROUTING_ZONE_ID` | `mail-app-ingest` secret and var | Email routing drift check |
 | `DATABASE_URL` | Vercel | The Postgres check inside `/api/health` |
 
