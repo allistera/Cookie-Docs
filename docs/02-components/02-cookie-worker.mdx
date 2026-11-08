@@ -176,6 +176,8 @@ Ingest never acquires the responder dispatch lock.
 
 Authenticated `GET /emails/senders` returns `{ enabled, decisions, nextCursor }`
 with at most 50 decisions. `after=<address>` pages the normalized address order;
+`q=<text>` narrows the list to keys containing the text (lower-cased, `LIKE`
+wildcards matched literally) and pages with the same cursor;
 `address=<address>` reads the one decision that applies to that sender (its own
 row, else the most specific `@domain` row). Decision keys are either an exact
 address or `@domain`, which covers that domain and its subdomains; the database
