@@ -59,7 +59,7 @@ The classification request contains:
 - only user labels whose **Auto-tag** switch is enabled, including each label's ID, name, and description;
 - a system instruction that treats the email as untrusted data, never as instructions.
 
-The OpenAI response is constrained to a strict JSON schema containing candidate label IDs and confidences, a spam verdict/score/reason, and a `low`/`normal`/`high` priority. The default model is `gpt-5.6-luna` (overridable with `AI_MODEL`), and the stored prompt version is `email-enrichment-v2`.
+The OpenAI response is constrained to a strict JSON schema containing candidate label IDs and confidences, a spam verdict/score/reason, a `low`/`normal`/`high` priority, and a `paper_trail` flag for receipts, confirmations and other transactional records. The default model is `gpt-5.6-luna` (overridable with `AI_MODEL`), and the stored prompt version is `email-enrichment-v6`.
 
 :::note
 Arrival-time enrichment never generates a message summary. Reading-view summaries are a separate, authenticated, user-triggered operation.
@@ -76,6 +76,7 @@ Cookie-Worker does not write the model response directly. It applies determinist
 | A `spam` verdict from **0.80** to below **0.98** | Store as internal `review` | Message remains in Inbox |
 | A `spam` verdict **≥ 0.98** | Confirm as Spam | Apply the system Spam label, hide from Inbox and unread counts, show under **More → Spam** |
 | `low` / `normal` / `high` priority | Store on `message_ai` | Used for mailbox priority; AI Today no longer runs per-email task extraction |
+| `paper_trail` is true | Skip when the message is confirmed Spam | Apply the system Paper Trail label as a `source = 'ai'` label; the message stays in Inbox and also appears under **Paper Trail** in the sidebar |
 
 Every completed classification stores the provider, model, prompt version, processing time, spam reason, and label confidence. That provenance makes later prompt/model changes auditable. A retry deletes and rebuilds only AI-applied labels, so manual labels and deterministic rule results remain intact.
 
