@@ -86,7 +86,7 @@ Workers write one JSON object per line with an `event` name and counts, read in 
 | --- | --- | --- |
 | `stored`, `store_skipped_oversize` | `mail-app-ingest` | A message was stored, or forwarded without storage because it exceeded the 10 MiB parse cap |
 | `ai_enriched`, `ai_recovery_complete` | `mail-app-ingest` | Classification finished; the 15-minute cron finished its recovery pass |
-| `spam_purged` | `mail-app-ingest` | The retention sweep soft-deleted old spam (logged only on ticks that delete something) |
+| `spam_purged` | `mail-app-ingest` | The retention sweep soft-deleted old spam and blocked mail: `deleted` is the total and `blocked` the blocked share (logged only on ticks that delete something) |
 | `search_drift_swept`, `search_drift_sweep_failed`, `search_drift_sweep_misconfigured` | `mail-app-ingest` | The message drift sweep's `selected`, `indexed` and `failed` counts, and `backlog`, the messages still unindexed after the tick — check `failed` and `backlog`, not just the presence of the line |
 | `workspace_search_drift_swept`, `workspace_search_drift_failed` | `mail-app-ingest` | The document and task repair's counts per `target`, with `backlog` and `backlog_age_seconds` for what remains after the tick |
 | `meili_tasks_failed`, `meili_tasks_check_failed` | `mail-app-ingest` | Indexing tasks Meilisearch itself failed in the last 15 minutes (count plus one sample's index, type, error code and task uid), or a lookup that could not run |
