@@ -219,7 +219,11 @@ withheld rows. Digest snapshots record all contributing message IDs, including
 noise; the whole generated snapshot is hidden when a contributor is now held,
 so overview prose cannot reveal hidden content. Older snapshots without IDs use
 a conservative check of the original 24-hour source window. Freshly generated
-digests only use allowed mail. The spam-retention sweep excludes both held states.
+digests only use allowed mail. The retention sweep never deletes held mail. It
+soft-deletes blocked mail on the owner's `spamRetentionDays` (default 30),
+counted from the later of the message's `created_at` and the `updated_at` of the
+sender decision that covers it, and rechecks `screening_status` on the row it
+updates so a Block, Unblock or Accept that commits first wins.
 
 The notification trigger queues alerts only for allowed arrivals, but still emits
 content-free realtime refresh pings. Browser notification claims recheck current

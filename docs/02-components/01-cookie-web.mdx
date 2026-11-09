@@ -152,9 +152,14 @@ independently; review views include held mail even when a rule archives it.
 Release preserves the message's read, archive, spam and snooze state, so released
 mail may belong in Done, Spam or Snoozed instead of Inbox. Held/blocked mail stays
 out of ordinary folders, search, thread history and AI Today message items.
-Both review views retain mail until you explicitly delete it: automatic Spam
-retention does not purge held/blocked mail. Once released, ordinary Spam retention
-applies again using the original spam-verdict time.
+New senders retains held mail until you decide, however long that takes. Blocked
+mail is deleted automatically on the retention set in **Settings → Spam** (30 days
+by default, shared with the Spam folder): mail from an already-blocked sender is
+deleted that many days after it arrives, and mail that moved into **Blocked** when
+you blocked its sender is deleted that many days after the block, so nothing
+disappears the moment you block someone. Unblocking or accepting the sender
+before then keeps the mail. Once held or blocked mail is released, ordinary Spam
+retention applies again using the original spam-verdict time.
 
 Held/blocked arrivals do not produce browser or ntfy alerts or automatic replies.
 Releasing them does not create delayed alerts or revive replies. Blocking also
