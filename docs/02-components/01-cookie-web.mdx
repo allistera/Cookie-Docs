@@ -163,6 +163,25 @@ address, even if its envelope sender differs. A browser alert or provider reques
 already handed off cannot be recalled. Blocking does not unsubscribe, reject
 inbound delivery, change original forwarding, or restrict manual replies/sends.
 
+## Paper Trail
+
+**Paper Trail** sits under AI Today in the Email sidebar and lists receipts,
+confirmations and other transactional mail: invoices, order, purchase, booking
+and payment confirmations, refunds, shipping and delivery updates, and account
+statements. It is a second place to find that mail, not a move: each message
+stays in the Inbox, with its usual tab, read state and actions, and marking it
+Done there leaves it listed in Paper Trail.
+
+Membership is decided once, when the message arrives. The ingest classifier
+answers whether the email is such a record (see
+[AI features](/ai-features)) and, if so, attaches the system
+**Paper Trail** label. The sidebar item opens that label's list
+(`/inbox?filter=label&label=Paper Trail`), so it needs no route, table or
+migration of its own. Being a system label it is not repeated in the sidebar's
+Labels section or the tag menus; flagged rows wear a Paper Trail pill wherever
+they are listed. Mail that arrived before the classifier learned the question
+is not revisited, and confirmed spam is never filed.
+
 ## ntfy notifications
 
 Settings → Notifications → **ntfy notifications** sends a push notification for
