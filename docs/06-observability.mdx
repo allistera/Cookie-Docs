@@ -10,7 +10,7 @@ Cookie runs on free and pay-per-use tiers, so observability is deliberately smal
 | Component | Errors | Traces | Metrics | Logs | Health |
 | --- | --- | --- | --- | --- | --- |
 | Cookie-Web (browser) | Sentry via the same-origin `/monitoring` tunnel, with Session Replay | Sentry browser tracing, 10% of page loads and navigations, Web Vitals | `web.operations`, `web.operation.duration` | Vercel function logs for the residual `/api/*` functions | `GET /api/health` aggregates Postgres, Meilisearch and twelve Workers |
-| Cookie-Worker (15 Workers) | Sentry, `service` and `operation` tags | Cloudflare automatic traces exported to Honeycomb, one dataset per Worker | `worker.invocations`, `worker.duration` | Structured JSON lines in Cloudflare Workers Logs | `GET /health` on the eleven `cookie-web-*` APIs and `cookie-mcp`; Sentry cron monitors and inbound-health checks on `mail-app-ingest` |
+| Cookie-Worker (15 Workers) | Sentry, `service` and `operation` tags; Cloudflare Workers Issues on fourteen Workers | Cloudflare automatic traces exported to Honeycomb, one dataset per Worker | `worker.invocations`, `worker.duration` | Structured JSON lines in Cloudflare Workers Logs | `GET /health` on the eleven `cookie-web-*` APIs and `cookie-mcp`; Sentry cron monitors and inbound-health checks on `mail-app-ingest` |
 | Cookie-iOS | None — the app ships no crash-reporting SDK; failures surface in the Worker APIs it calls | — | — | None | — |
 | Cookie-Agents | Structlog and OpenTelemetry inside its own Render service | OpenTelemetry | — | Structlog output in Render's service logs | `GET /health` (liveness plus database connectivity) |
 | Cookie-Docs | — | — | — | GitHub Actions build logs | — |
@@ -42,6 +42,14 @@ Cookie-Web loads `@sentry/vue` lazily after the app mounts, so monitoring never 
 - Session Replay records a masked copy of the page: all text and inputs become asterisks, media is blocked, `alt`, `title`, `placeholder` and `aria-label` are masked, and the sandboxed email iframe is a blank box. Page, navigation and API URLs are removed from each segment before upload. 10% of sessions are recorded and every session with an error is kept from its buffered start. The Sentry Developer plan includes 50 replays a month and drops the rest without charge.
 - Browser profiling is off: Sentry sells UI profile hours only through a pay-as-you-go budget, so with none configured every profile chunk was rejected.
 
+### Workers Issues
+
+Fourteen of the fifteen Workers also turn on Cloudflare's Workers Issues through `observability.issues.enabled` in their `wrangler.jsonc`. It groups uncaught exceptions, failed invocations, `5xx` responses and error-level logs in the Cloudflare dashboard, with no SDK. Sentry stays the place for scrubbed error reports; Issues is the platform's own view of the same failures.
+
+- Every Worker states the key, because a Wrangler deploy without it turns Issues off. The setting takes effect on a Worker's next deploy.
+- `cookie-web-calendar` sets it to `false`. Issues keeps request details with each occurrence and has no redaction setting, so the token-bearing feed URLs would be stored.
+- Occurrence details are kept for seven days. No automation forwards issues anywhere; add one in the dashboard only after checking what its payload contains.
+
 ## Tracing with Honeycomb
 
 Every Worker except `cookie-web-calendar` exports Cloudflare's automatic Workers traces over OTLP to Honeycomb (EU), one dataset per Worker, through the `honeycomb-traces` destination configured in the Cloudflare dashboard. The endpoint and API key live in that destination, not in the repository; each `wrangler.jsonc` only names it in its `observability.traces` block. No OpenTelemetry SDK is installed in the Workers.
@@ -61,7 +69,7 @@ Head sampling is set per Worker and applies to logs and traces alike:
 | --- | --- |
 | 100% | `mail-app-ingest`, `data-enricher`, `cookie-web-ai`, `cookie-web-send` |
 | 20% | `cookie-web-emails`, `cookie-web-messages`, `cookie-web-labels`, `cookie-web-search`, `cookie-web-drafts`, `cookie-web-tasks`, `cookie-web-notifications`, `cookie-web-receipts`, `cookie-mcp`, `scheduled-send-flusher` |
-| Traces off, invocation logs off | `cookie-web-calendar` — its feed URLs carry bearer tokens, and Cloudflare's automatic logs and traces record request URLs. Only the Worker's own sanitised log lines, metrics and Sentry events remain. Do not add full-URL logging, request tracing or URL-bearing Logpush exports for it without redacting `token` first |
+| Traces off, invocation logs off, Issues off | `cookie-web-calendar` — its feed URLs carry bearer tokens, and Cloudflare's automatic logs, traces and Issues record request details. Only the Worker's own sanitised log lines, metrics and Sentry events remain. Do not add full-URL logging, request tracing, Workers Issues or URL-bearing Logpush exports for it without redacting `token` first |
 
 Cloudflare's own `email` span carries `cloudflare.email.from` and `cloudflare.email.to`; the runtime sets those and the Workers cannot change them.
 
@@ -157,7 +165,7 @@ Nothing in the repositories configures an external uptime monitor. `/api/health`
 | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Vercel build | Source-map upload only; never exposed through `VITE_` |
 | `/monitoring` rewrite | `vercel.json` | Same-origin tunnel to the Sentry envelope endpoint; update it if the organisation or project changes |
 | `honeycomb-traces` destination | Cloudflare dashboard | Honeycomb OTLP endpoint and API key for Worker traces |
-| `observability` block | Each `wrangler.jsonc` | Log and trace sampling per Worker |
+| `observability` block | Each `wrangler.jsonc` | Log and trace sampling per Worker, and whether Workers Issues is on |
 | `AI_GATEWAY_ID`, `CLOUDFLARE_ACCOUNT_ID` | AI-calling Workers' vars | Route OpenAI calls through AI Gateway for logs and cost tracking |
 | `INBOUND_STALE_HOURS`, `PENDING_ENRICHMENT_MAX_MINUTES` | `mail-app-ingest` vars | Inbound health thresholds |
 | `SEARCH_BACKLOG_MAX_ROWS`, `SEARCH_STALE_MAX_MINUTES` | `mail-app-ingest` vars | Search health thresholds |
