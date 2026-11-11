@@ -3,14 +3,14 @@ title: Observability
 description: Where Cookie's errors, traces, metrics, logs and health signals go, what each one contains, and which to open first when something breaks.
 ---
 
-Cookie runs on free and pay-per-use tiers, so observability is deliberately small: one Sentry project for errors, metrics and browser telemetry, Honeycomb for Worker traces, the platforms' own log views, and a handful of checks that turn a silent failure into a Sentry issue. Every signal follows the same privacy rule — operation names, outcomes, counts, status codes and durations leave the system; mail content, addresses, user identity, URLs with tokens, SQL parameters and secrets never do.
+Cookie runs on free and pay-per-use tiers, so observability is deliberately small: one Sentry project for errors, metrics and browser telemetry, Honeycomb for Worker traces, two Analytics Engine datasets that time every request and every database query, the platforms' own log views, and a handful of checks that turn a silent failure into a Sentry issue. Every signal follows the same privacy rule — operation names, route templates, outcomes, counts, status codes and durations leave the system; mail content, addresses, user identity, URLs with tokens, SQL text and parameters, and secrets never do.
 
 ## Signals at a glance
 
 | Component | Errors | Traces | Metrics | Logs | Health |
 | --- | --- | --- | --- | --- | --- |
 | Cookie-Web (browser) | Sentry via the same-origin `/monitoring` tunnel, with Session Replay | Sentry browser tracing, 10% of page loads and navigations, Web Vitals | `web.operations`, `web.operation.duration` | Vercel function logs for the residual `/api/*` functions | `GET /api/health` aggregates Postgres, Meilisearch and twelve Workers |
-| Cookie-Worker (15 Workers) | Sentry, `service` and `operation` tags; Cloudflare Workers Issues on fourteen Workers | Cloudflare automatic traces exported to Honeycomb, one dataset per Worker | `worker.invocations`, `worker.duration` | Structured JSON lines in Cloudflare Workers Logs | `GET /health` on the eleven `cookie-web-*` APIs and `cookie-mcp`; Sentry cron monitors and inbound-health checks on `mail-app-ingest` |
+| Cookie-Worker (15 Workers) | Sentry, `service` and `operation` tags; Cloudflare Workers Issues on fourteen Workers | Cloudflare automatic traces exported to Honeycomb, one dataset per Worker | `worker.invocations`, `worker.duration`; request and query timings in Analytics Engine | Structured JSON lines in Cloudflare Workers Logs | `GET /health` on the eleven `cookie-web-*` APIs and `cookie-mcp`; Sentry cron monitors and inbound, search and database health checks on `mail-app-ingest` |
 | Cookie-iOS | None — the app ships no crash-reporting SDK; failures surface in the Worker APIs it calls | — | — | None | — |
 | Cookie-Agents | Structlog and OpenTelemetry inside its own Render service | OpenTelemetry | — | Structlog output in Render's service logs | `GET /health` (liveness plus database connectivity) |
 | Cookie-Docs | — | — | — | GitHub Actions build logs | — |
@@ -26,6 +26,7 @@ All Workers and the browser report to the same Sentry project, hosted in Sentry'
 The shared policy lives in Cookie-Worker's `shared/sentry.js`; each Worker adds a thin `src/sentry.js` naming itself and listing the secrets it holds.
 
 - Uncaught failures are captured by `Sentry.withSentry`. Failures a Worker catches on purpose go through `captureHandledException(service, operation, err)`, which also attaches the error to the active trace span.
+- A failure that came from Postgres or its driver carries a `db.error_code` tag: the SQLSTATE (`57014` for a statement timeout, `40P01` for a deadlock, class `08` for a lost connection) or the driver's own code (`CONNECT_TIMEOUT`, `CONNECTION_CLOSED`). Database failures can be filtered and alerted on by class without opening each issue.
 - Conditions detected without an exception (a feed that has gone quiet, a routing rule that changed) are reported with `captureHandledMessage` under a fixed fingerprint, so repeats on later cron ticks stay one issue.
 - Every Sentry data-collection category is switched off explicitly: user identity, cookies, headers, bodies, query parameters, AI inputs and outputs, database query data and stack-frame variables. Request, user and breadcrumb fields are removed in `beforeSend`.
 - Connection strings and API tokens are stripped from messages and stack traces before capture, and from the structured log lines beside them.
@@ -57,7 +58,7 @@ Every Worker except `cookie-web-calendar` exports Cloudflare's automatic Workers
 Cloudflare records the handler invocation, every outbound `fetch` and every `hyperdrive_connect`. Cookie-Worker's `shared/tracing.js` adds what those leave out, and all of it is a no-op when an invocation is not sampled:
 
 - Request spans are renamed from the bare method to `GET /messages/{id}` and carry `http.route`, so `/health` probes and real routes can be told apart. Identifier segments (UUIDs, numbers, hex IDs, long tokens) become `{id}` and never reach the trace.
-- Each Postgres query made through `createSql` is a span named after its operation (`SELECT`, `INSERT`, `COMMIT`) with the OpenTelemetry database attributes, the row count and, on failure, `error.type` (the SQLSTATE or driver code). Query text and parameters are never recorded (`shared/db-tracing.js`).
+- Each Postgres query made through `createSql` is a span named after its operation (`SELECT`, `INSERT`, `COMMIT`) with the OpenTelemetry database attributes, the row count and, on failure, `error.type` (the SQLSTATE or driver code). Query text and parameters are never recorded (`shared/db-tracing.js`); `cookie.db.query.fingerprint` names the statement instead, with the same value its query-timing rows carry.
 - A failure the Worker caught and reported to Sentry is attached to the invocation span as an exception with `error.type` and `cookie.error.operation`, without marking the span failed.
 - `mail-app-ingest` records the outcome of each delivery (`cookie.ingest.*`, `cookie.forward.outcome`) as counts and flags.
 - `cookie-web-search`, and the document search in `cookie-web-tasks`, describe each search on its request span as `cookie.search.*`: `scope` (`mail`, `all`, `documents`, `tasks`, `ask`), `federated`, `mode` (`hybrid` or `keyword`), `has_text`, `filters` (operator count), `legs` (the indexes queried), `hits`, `hydrated`, `estimated_total`, `verified`, `verified_batches` and `outcome` (`ok`, `empty_query`, `skipped`, `invalid`, `meili_transient`, `meili_rejected`). Query text never reaches the trace. Hits that did not hydrate from Postgres are stale index entries; zero hits on a hybrid query is a relevance question, not an availability one. The response's `Server-Timing` header splits `meili` (retrieval) from `hydrate` (Postgres) beside `total`.
@@ -86,6 +87,85 @@ Both runtimes emit a small fixed set of Sentry application metrics through the e
 
 A 5xx response or a thrown exception has outcome `error`; every other returned response is `success`, so use `status` to see 4xx traffic. Up to 100 early browser timings are buffered while the lazy SDK loads. The metrics appear in Sentry's Application Metrics view; releases before the environment and release labels were added only show up with the environment filter cleared.
 
+### Request and query timings
+
+The Sentry metrics have no route and no view of the database. Two Workers Analytics Engine datasets fill that in, written by every Worker for every invocation, whatever the trace and log sampling. They are queried with Cloudflare's SQL API as `events.analyticsEngine.<dataset>`, are kept for three months, and are what the [service-level objectives](#service-level-objectives) are measured on.
+
+`cookie_response_times` has one row per HTTP request (`shared/responseMetrics.js`):
+
+| Column | Value |
+| --- | --- |
+| `index1`, `blob1` | Worker name |
+| `blob2` | HTTP method |
+| `blob3` | Route template, such as `/messages/{id}`; never an identifier or a query string |
+| `double1` | Milliseconds until the handler returned |
+| `double2` | HTTP status; `500` when the handler threw, which is what the client receives |
+
+`cookie_sql_queries` has one row per database query made through `createSql` (`shared/sqlMetrics.js`):
+
+| Column | Value |
+| --- | --- |
+| `index1`, `blob1` | Worker name |
+| `blob2` | What ran the query: `GET /messages/{id}`, `scheduled */15 * * * *`, `email`, `queue` or `alarm` |
+| `blob3` | Operation: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `WITH` |
+| `blob4` | Statement fingerprint, eight hex digits |
+| `blob5` | `ok`, or the SQLSTATE or driver code the query failed with |
+| `double1` | Milliseconds the caller waited: Hyperdrive, the network and the database together |
+| `double2` | Rows returned or affected |
+
+The fingerprint is a hash of the statement's static text, so one statement keeps one fingerprint for every set of parameters and every length of value list, and nothing of the statement can be read back from it. Query text, parameters and table names are never recorded. To find the statement behind a fingerprint, start from the route or schedule in `blob2` and the operation in `blob3`; in a sampled trace the query span carries the same fingerprint.
+
+Two things shape every query against these datasets:
+
+- **Health probes.** Each HTTP Worker answers a `/health` probe about 290 times a day, which is more than the real traffic of several Workers. A probe and a CORS preflight do no I/O, so both record 0 ms. Filter them out with `blob3 != '/health' AND blob2 != 'OPTIONS'`, or a latency or availability figure mostly measures the probe. Rows written before the route was recorded have an empty `blob3`.
+- **The per-invocation limit.** Analytics Engine accepts 250 rows per invocation, so a Worker stops recording queries after the first 200 of one invocation. A long sweep is described by those.
+
+## Service-level objectives
+
+Cookie's objectives cover latency, availability, traffic and errors. Each is a ratio of bad events to all events over a rolling 28 days, measured on the datasets above and on Cloudflare's own record of every invocation, `events.workersInvocations`.
+
+| Signal | Indicator | Starting objective |
+| --- | --- | --- |
+| Latency | Share of real requests answered within one second | 95% |
+| Availability | Share of real requests answered without a `5xx` | 99.5% |
+| Errors | Share of database queries that succeed | 99.9% |
+| Database latency | Share of database queries the caller waits under 250 ms for | 99% |
+| Scheduled work | Share of cron invocations that succeed | 99% |
+| Traffic | Not an objective: each cron fires as often as it is scheduled, and no Worker fails outright | Alert only |
+
+"Real" leaves out health probes and preflights. Inbound mail is deliberately not in the table: `mail-app-ingest` throws on purpose so the sending server retries, so its invocation status measures retries, not lost mail. Its objective is the `inbound-stale` check described under [Health and silent failures](#health-and-silent-failures).
+
+The targets are a starting point taken from a week of data in which no HTTP Worker returned a `5xx` and about one request in a hundred took over a second. Tighten them once a month of route-tagged data exists.
+
+### Monitors
+
+The objectives are alerted on from the Cloudflare dashboard, under **Observability** > **Alerts** > **Monitors**, with the **SLO** detection method. Each monitor takes a bad-events query and a total-events query and fires when the share of good events is under the target in both a short and a long window. Monitors are created by hand; nothing in the repositories defines them.
+
+Every query must return one column named `value`, filter on `accountTag`, have no trailing semicolon and, in the automatic time-range mode, no `timestamp` condition. The total-events queries are below; the bad-events query is the same with the extra condition in the last column.
+
+| Objective | Total events | Extra condition for bad events |
+| --- | --- | --- |
+| Latency | `SELECT COUNT(*) AS value FROM events.analyticsEngine.cookie_response_times WHERE accountTag = '<ACCOUNT_ID>' AND blob3 != '' AND blob3 != '/health' AND blob2 != 'OPTIONS'` | `AND double1 > 1000` |
+| Availability | The same query | `AND double2 >= 500` |
+| Errors | `SELECT COUNT(*) AS value FROM events.analyticsEngine.cookie_sql_queries WHERE accountTag = '<ACCOUNT_ID>'` | `AND blob5 != 'ok'` |
+| Database latency | The same query | `AND double1 > 250` |
+| Scheduled work | `SELECT COUNT(*) AS value FROM events.workersInvocations WHERE accountTag = '<ACCOUNT_ID>' AND invocationType = 'cron' AND (scriptName LIKE 'cookie-%' OR scriptName IN ('mail-app-ingest', 'data-enricher', 'scheduled-send-flusher'))` | `AND status != 'success'` |
+
+Narrow any of them to one Worker with `AND index1 = 'cookie-web-messages'` (or `scriptName` on the invocation dataset), or to one route with `blob3`.
+
+Two threshold monitors cover traffic:
+
+| Monitor | Query | Fires when |
+| --- | --- | --- |
+| A cron has stopped | `SELECT COUNT(*) AS value FROM events.workersInvocations WHERE accountTag = '<ACCOUNT_ID>' AND scriptName = 'cookie-web-notifications' AND invocationType = 'cron'`, over 30 minutes | Under 20 (the cron runs every minute). Repeat per cron Worker with its own expected count |
+| A Worker is failing outright | `SELECT COUNT(*) AS value FROM events.workersInvocations WHERE accountTag = '<ACCOUNT_ID>' AND scriptName LIKE 'cookie-%' AND status != 'success' AND status != 'clientDisconnected'`, over one hour | Above 0. `clientDisconnected` is the caller hanging up, not a failure |
+
+Three things to keep in mind when setting them up:
+
+- **Use long windows and a minimum event count.** Real traffic is tens to a few hundred requests a day per Worker, so a five-minute window is usually empty and one failure in it reads as a total outage. Windows of an hour and a day, with a minimum of about twenty events, behave sensibly.
+- **A monitor is an alert, not a budget.** It compares the ratio with the target and keeps no account of what has been spent. The 28-day figure comes from one query, on a dashboard or run by hand: `SELECT 1 - countIf(double2 >= 500) / COUNT(*) AS value FROM events.analyticsEngine.cookie_response_times WHERE accountTag = '<ACCOUNT_ID>' AND timestamp >= NOW() - INTERVAL '28' DAY AND blob3 != '' AND blob3 != '/health' AND blob2 != 'OPTIONS'`. The error budget left is that value's distance above the target.
+- **Cloudflare cannot report its own outage.** If no Worker is invoked there are no bad events, and every ratio looks perfect. Only an external probe of `/api/health` catches that; see the note under [Health and silent failures](#health-and-silent-failures).
+
 ## Logs
 
 Workers write one JSON object per line with an `event` name and counts, read in the Cloudflare dashboard's Workers Logs view or with `wrangler tail`. Sampling follows the table above. Events worth knowing by name:
@@ -100,6 +180,7 @@ Workers write one JSON object per line with an `event` name and counts, read in 
 | `meili_tasks_failed`, `meili_tasks_check_failed` | `mail-app-ingest` | Indexing tasks Meilisearch itself failed in the last 15 minutes (count plus one sample's index, type, error code and task uid), or a lookup that could not run |
 | `message_search_meili_failed`, `federated_search_meili_failed`, `document_search_meili_failed` | `cookie-web-search`, `cookie-web-tasks` | A search that returned 503, with `transient` saying whether the tunnel or Meilisearch itself answered. Each is also a Sentry issue under `meili_search_transient` or `meili_search_rejected`, so the sampled log line is not the only record |
 | `object_cleanup` | `cookie-web-tasks` | Processed, retained, failed, pending and oldest-seconds counts for the deletion queue, without object paths |
+| `db_health_checked`, `db_query_stats_unavailable` | `mail-app-ingest` | What the database health check saw on a tick: `regressed` statements, `long_running` queries, `lock_waiting` sessions, `connections` and `max_connections`; or, once per isolate, that the comparison is skipped because the snapshot table is not there yet |
 | `mcp_tool`, `mcp_handler_error` | `cookie-mcp` | One line per tool call with name, outcome and duration; SDK-level failures with the error name. Arguments and results are never logged |
 
 OpenAI calls from the seven AI-calling Workers go through the Cloudflare AI Gateway named by `AI_GATEWAY_ID`, which keeps per-request logs and cost tracking in the Cloudflare dashboard without any change to the request shape or the `OPENAI_API_KEY` secret.
@@ -108,7 +189,7 @@ Cookie-Web's remaining Vercel functions (`/api/send`, `/api/health`) log to Verc
 
 ## Health and silent failures
 
-Errors are easy to notice; work that quietly stops is not. Three mechanisms cover that gap.
+Errors are easy to notice; work that quietly stops, or quietly slows down, is not. Five mechanisms cover that gap.
 
 **Readiness.** `GET /api/health` on Cookie-Web (`HEAD` for status only) runs its checks in parallel with a three-second deadline each: a read-only Postgres `SELECT 1`, Meilisearch `/health`, and the `/health` routes on the eleven `cookie-web-*` Workers and `cookie-mcp`. It returns `200` with `status: "ok"`, or `503` with `status: "degraded"` and a status per failed dependency, with `Cache-Control: no-store` and no other content. Worker probes check liveness only; they do not authenticate, send mail, call AI providers or verify scheduled jobs.
 
@@ -136,6 +217,19 @@ A check that cannot run is reported as an `inbound_health` exception. The checks
 | Document or task repair is falling behind | `documents-stale`, `task_items-stale` | The oldest unindexed change is older than the threshold after a tick, so four oldest-first ticks have passed it over. For a task, the change is the newer of its own edit and its latest sub-task edit | `SEARCH_STALE_MAX_MINUTES` (default 60) |
 | Meilisearch failed indexing tasks | `meili-task-failures` | Meilisearch reports tasks with status `failed` enqueued in the last 15 minutes: a document it cannot index, or an embedder call OpenAI refused. Writers that do not wait for their task never learn of this, so it is where an embedder outage first shows | None; a failing lookup is a `meili_tasks_check` exception |
 
+**Database health.** The Workers time their own queries, but only the database sees every client: the Vercel functions, Cookie-Agents and the migration runner as well. After the inbound checks, the 15-minute run reads Postgres's own statistics and raises an error-level Sentry message under the `db_health` operation with a fixed fingerprint per condition:
+
+| Issue | Fingerprint | Condition | Tunable |
+| --- | --- | --- | --- |
+| Statements are running slower than their baseline | `query-regression` | A statement's mean execution time since the previous tick is at least three times its mean before it, and at least the floor. It needs five calls in the interval and twenty before it, so a rarely run statement is never judged on one call | `DB_REGRESSION_MIN_MS` (default 200) |
+| Queries have been running for a long time | `long-running-query` | A query of the Workers' role has been active for longer than the limit without waiting on a lock | `DB_LONG_QUERY_SECONDS` (default 30) |
+| Sessions are waiting on locks | `lock-wait` | A session has waited on a lock for more than ten seconds | None |
+| Connections are close to the limit | `connection-saturation` | Client sessions use at least 80% of `max_connections` | None |
+
+The comparison works from `pg_stat_statements`. Each tick stores the counters in the `db_query_stats` table and the next tick compares against them, so the difference is the last interval and the stored reading is the baseline. The issue carries query ids, call counts and timings; the statement's text is looked up in the database by its id and never leaves it. A check samples the sessions once per tick, so it sees a condition that lasts, which is the kind worth an alert; a single slow query between ticks shows in the query timings instead.
+
+Postgres itself logs every statement that takes a second or longer, with its execution plan, into the project's Postgres logs in Supabase. Parameter logging is switched off for both, so the values bound to a slow statement are not written there.
+
 A Meilisearch failure on a search request is reported on its first occurrence as `meili_search_transient` (a gateway answer from the tunnel) or `meili_search_rejected` (a verdict from Meilisearch itself, such as a filter on an attribute the index does not declare filterable), with `scope` and `mode` in the extra. Cookie-Worker's `RUNBOOK.md` describes what to do for each.
 
 :::note
@@ -148,7 +242,9 @@ Nothing in the repositories configures an external uptime monitor. `/api/health`
 | --- | --- | --- |
 | Mail has stopped arriving | The `inbound-stale` or `email-routing-drift` issue in Sentry | `mail-app-ingest` Workers Logs for `stored` events, the Cloudflare Email Routing catch-all rule, and the inbound mail steps in Cookie-Worker's `RUNBOOK.md` |
 | Classification stuck, AI features failing | The `pending-enrichment` issue and `service:cookie-web-ai` issues in Sentry | AI Gateway logs for the upstream status, then `OPENAI_API_KEY` and the shared AI budget |
-| An API route is slow | The Worker's Honeycomb dataset, grouped by `http.route` | Its `SELECT` and `hyperdrive_connect` child spans; `worker.duration` by `service` for the trend |
+| An API route is slow | `cookie_response_times` by `blob3` for which route and since when; `cookie_sql_queries` with the same route in `blob2` for which statement | The Worker's Honeycomb dataset, grouped by `http.route`, for the `SELECT` and `hyperdrive_connect` child spans of one request |
+| A statement got slower | The `query-regression` issue in Sentry and its `worst_queryid` | `pg_stat_statements` for that id, the plan in the Postgres logs, and Supabase's Query Performance report; Cookie-Worker's `RUNBOOK.md` has the queries |
+| Database errors | Sentry issues filtered by `db.error_code` | `cookie_sql_queries` grouped by `blob5` for how often and from which route |
 | A browser error report | The Sentry issue with `service:cookie-web`, and its linked replay | The release tag against the deployed commit; the same route in Vercel function logs if `/api/*` was involved |
 | Scheduled work went silent | Sentry Crons for a missed check-in | The Worker's `scheduled` metrics (`trigger:scheduled`) and Workers Logs for the tick |
 | Search returns errors | The `meili_search_transient` or `meili_search_rejected` issue in Sentry | `/api/health` for Meilisearch reachability; the `cookie-web-search` Honeycomb dataset filtered to `cookie.search.outcome` |
@@ -169,6 +265,9 @@ Nothing in the repositories configures an external uptime monitor. `/api/health`
 | `AI_GATEWAY_ID`, `CLOUDFLARE_ACCOUNT_ID` | AI-calling Workers' vars | Route OpenAI calls through AI Gateway for logs and cost tracking |
 | `INBOUND_STALE_HOURS`, `PENDING_ENRICHMENT_MAX_MINUTES` | `mail-app-ingest` vars | Inbound health thresholds |
 | `SEARCH_BACKLOG_MAX_ROWS`, `SEARCH_STALE_MAX_MINUTES` | `mail-app-ingest` vars | Search health thresholds |
+| `DB_REGRESSION_MIN_MS`, `DB_LONG_QUERY_SECONDS` | `mail-app-ingest` vars | Database health thresholds |
+| `RESPONSE_METRICS`, `SQL_METRICS` | `analytics_engine_datasets` in each `wrangler.jsonc` | The `cookie_response_times` and `cookie_sql_queries` datasets |
+| Monitors | Cloudflare dashboard | Service-level objective and traffic alerts; created by hand |
 | `CLOUDFLARE_EMAIL_ROUTING_TOKEN`, `EMAIL_ROUTING_ZONE_ID` | `mail-app-ingest` secret and var | Email routing drift check |
 | `DATABASE_URL` | Vercel | The Postgres check inside `/api/health` |
 
