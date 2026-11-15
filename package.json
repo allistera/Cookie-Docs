@@ -15,14 +15,14 @@
     "js-yaml": "^5.5.0"
   },
   "devDependencies": {
-    "prettier": "3.9.10"
+    "prettier": "3.10.1"
   },
   "overrides": {
     "@astrojs/react": {
       "@vitejs/plugin-react": "6.1.1"
     },
     "@tailwindcss/typography": {
-      "postcss-selector-parser": "7.1.7"
+      "postcss-selector-parser": "7.2.1"
     },
     "@vercel/cli-config": {
       "zod": "4.6.7"
@@ -30,7 +30,7 @@
     "@vercel/routing-utils": {
       "path-to-regexp": "6.3.0"
     },
-    "glob": "14.0.3",
-    "minimatch": "11.0.3"
+    "glob": "14.0.6",
+    "minimatch": "11.0.8"
   }
 }
