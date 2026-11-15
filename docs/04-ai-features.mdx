@@ -13,11 +13,30 @@ Cookie's AI features are deliberately narrow: each one assists a specific, famil
 | Assistant chat (mail, documents & tasks) | `cookie-web-search` (Cookie-Worker) | Meilisearch conversational search, OpenAI chat model |
 | Mailbox Q&A (`POST /ask`, legacy) | `cookie-web-search` (Cookie-Worker) | OpenAI Responses API |
 | AI Compose | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
-| Document chat and editing | `cookie-web-ai` (Cookie-Worker) | GPT-5.6 Sol via OpenAI Responses API |
+| Document chat and editing | `cookie-web-ai` (Cookie-Worker) | GPT-6.1 Sol via OpenAI Responses API |
 | Reading-view summaries | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
 | Natural-language calendar drafts | `cookie-web-calendar` (Cookie-Worker) | OpenAI Responses API |
 | Link-only unsubscribe assistance | `cookie-web-messages` (Cookie-Worker) | OpenAI Responses API |
 | AI Today: inbox triage | `data-enricher` (Cookie-Worker) | OpenAI Responses API |
+
+## Models
+
+Every model is an OpenAI model called with the one `OPENAI_API_KEY` each Worker holds. The defaults below were chosen on 2026-11-15 as the newest model in the cheapest tier that does each job; prices are OpenAI's standard rates in USD per million input / output tokens on that date.
+
+| Used for | Default model | Price | Override |
+| --- | --- | --- | --- |
+| Mail classification on arrival | `gpt-6-luna` | 0.10 / 0.50 | `AI_MODEL` on `mail-app-ingest` |
+| Compose, summaries, new documents, rule drafts | `gpt-6-luna` | 0.10 / 0.50 | `OPENAI_COMPOSE_MODEL`, `OPENAI_SUMMARY_MODEL`, `OPENAI_DOCUMENT_MODEL` |
+| Calendar and task drafts, unsubscribe assistance | `gpt-6-luna` | 0.10 / 0.50 | `OPENAI_CALENDAR_MODEL`, `OPENAI_UNSUBSCRIBE_MODEL` (task drafts have none) |
+| AI Today triage | `gpt-6-luna`, or `gpt-6.1-terra` (1 / 5) when chosen in Settings | 0.10 / 0.50 | Settings → AI Today |
+| Document chat | `gpt-6.1-sol` | 2 / 10 | `OPENAI_DOCUMENT_CHAT_MODEL` |
+| Mailbox Q&A (`POST /ask`, legacy) | `gpt-6-luna`, no reasoning pass | 0.10 / 0.50 | `OPENAI_ASK_MODEL` |
+| Assistant chat | `gpt-4o-mini` | 0.15 / 0.60 | `OPENAI_CHAT_MODEL` |
+| Search embeddings | `text-embedding-3-small` | 0.02 / n/a | none: changing it means re-embedding every index |
+
+The assistant chat is the one feature still on an older model, and it has a deadline: OpenAI removes `gpt-4o-mini` on 2027-01-14. The chat runs inside Meilisearch, which calls OpenAI's Chat Completions API with a search tool. The GPT-5.6 and GPT-6 models accept tools there only with `reasoning_effort` set to `none`, and Meilisearch (checked through 1.56.2) rejects that value before the request leaves it, so each of those models fails with "Function tools with reasoning_effort are not supported". Before the deadline, either upgrade to a Meilisearch release that forwards `none` and set the default to `gpt-6-luna`, or set `OPENAI_CHAT_MODEL` to `gpt-5.4-mini` (0.75 / 4.50), the newest model that works there today.
+
+AI Today settings saved with a model that has since been retired (`gpt-5-nano`, `gpt-5.6-luna`, `gpt-4.1-nano`) read back as the default, so no data change is needed when the list moves on.
 
 ## What “AI Inbox” means
 
@@ -59,7 +78,7 @@ The classification request contains:
 - only user labels whose **Auto-tag** switch is enabled, including each label's ID, name, and description;
 - a system instruction that treats the email as untrusted data, never as instructions.
 
-The OpenAI response is constrained to a strict JSON schema containing candidate label IDs and confidences, a spam verdict/score/reason, a `low`/`normal`/`high` priority, and a `paper_trail` flag for receipts, confirmations and other transactional records. The default model is `gpt-5.6-luna` (overridable with `AI_MODEL`), and the stored prompt version is `email-enrichment-v6`.
+The OpenAI response is constrained to a strict JSON schema containing candidate label IDs and confidences, a spam verdict/score/reason, a `low`/`normal`/`high` priority, and a `paper_trail` flag for receipts, confirmations and other transactional records. The default model is `gpt-6-luna` (overridable with `AI_MODEL`), and the stored prompt version is `email-enrichment-v6`.
 
 :::note
 Arrival-time enrichment never generates a message summary. Reading-view summaries are a separate, authenticated, user-triggered operation.
@@ -195,14 +214,14 @@ sequenceDiagram
     participant Model as OpenAI
     Editor->>AI: POST /document-chat (instruction, draft, history)
     AI->>DB: Verify user and document ownership; enforce quota
-    AI->>Model: GPT-5.6 Sol, full draft, structured response
+    AI->>Model: GPT-6.1 Sol, full draft, structured response
     Model-->>AI: Reply and optional proposed changes
     AI-->>Editor: Validated reply and preview
     Note over Editor: User chooses Apply changes or Create document
     Editor->>DB: Normal autosave through cookie-web-tasks
 ```
 
-Document chat defaults to `gpt-5.6-sol` with medium reasoning, independently configurable through `OPENAI_DOCUMENT_CHAT_MODEL`. [OpenAI describes it as a flagship model for complex professional work with a 1,050,000-token context window and structured outputs](https://developers.openai.com/api/docs/models/gpt-5.6-sol). Cookie imposes smaller application limits: a 1 MiB request body, 250,000 document characters, 500 blocks, an 8,000-character instruction, a 90-second model deadline, and 16,000 output tokens. Oversized drafts and incomplete responses are rejected, not silently truncated.
+Document chat defaults to `gpt-6.1-sol` with medium reasoning, independently configurable through `OPENAI_DOCUMENT_CHAT_MODEL`. [OpenAI describes it as a model for complex coding, computer use and professional work with a 1,050,000-token context window and structured outputs](https://developers.openai.com/api/docs/models/gpt-6.1-sol). Cookie imposes smaller application limits: a 1 MiB request body, 250,000 document characters, 500 blocks, an 8,000-character instruction, a 90-second model deadline, and 16,000 output tokens. Oversized drafts and incomplete responses are rejected, not silently truncated.
 
 Questions return an answer; editing instructions return a proposed document with **Preview changes** and **Apply changes**. The server never writes the proposal itself. Before applying, the client checks that the document still matches the draft used for the request; a changed draft requires a new suggestion. Accepted edits use the existing autosave and conflict-recovery flow. With no document attached, **Create document** saves the proposal as a new page.
 

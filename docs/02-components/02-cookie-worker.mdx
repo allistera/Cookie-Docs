@@ -360,7 +360,7 @@ Without the `FILES` binding the upload route answers `503`, so a Worker deployed
 
 ## data-enricher
 
-`data-enricher` runs inbox triage only: Reply Needed / Review rows and Noise counts for the last 24 hours of Inbox mail plus mail marked done in that time, stored as `daily_digest` summaries. An hourly UTC cron checks the owner's saved Europe/London schedule (default every day, 09:00–19:00 inclusive). The saved model defaults to `gpt-5-nano`.
+`data-enricher` runs inbox triage only: Reply Needed / Review rows and Noise counts for the last 24 hours of Inbox mail plus mail marked done in that time, stored as `daily_digest` summaries. An hourly UTC cron checks the owner's saved Europe/London schedule (default every day, 09:00–19:00 inclusive). The saved model defaults to `gpt-6-luna`.
 
 Authenticated `POST /run`, `POST /run?phase=today`, and the legacy `POST /run?phase=digest` all run the same triage phase. Manual refresh bypasses the schedule gate. `cookie-web-tasks` continues to call the `today` alias, so existing clients need no migration.
 
@@ -419,7 +419,7 @@ npm run dry-run -- --all
 | Name | Scope | Purpose |
 | --- | --- | --- |
 | `HYPERDRIVE` | all data-backed Workers | Supabase connection |
-| `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | browser/API Workers | Verify the SPA's access token. `AUTH0_DOMAIN` may list several domains, comma-separated: each is an accepted issuer and the first supplies the JWKS, so the custom domain `auth.infinitywave.online` and the tenant domain coexist during a move |
+| `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | browser/API Workers | Verify the SPA's access token. `AUTH0_DOMAIN` may list several domains, comma-separated: each is an accepted issuer and the first supplies the JWKS (kept per isolate for an hour; a token signed with an unknown key forces a reload), so the custom domain `auth.infinitywave.online` and the tenant domain coexist during a move |
 | `ALLOWED_ORIGIN` | browser/API Workers | Production CORS origin |
 | `MEILISEARCH_URL` / `MEILISEARCH_API_KEY` | search readers/writers | Hybrid indexes and write synchronization |
 | `OPENAI_API_KEY` | AI, search answer, unsubscribe, ingest, enricher | Responses API; Meilisearch receives its embedder credential during reindex |

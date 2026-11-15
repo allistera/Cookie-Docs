@@ -35,7 +35,7 @@ The shared policy lives in Cookie-Worker's `shared/sentry.js`; each Worker adds 
 
 ### Browser
 
-Cookie-Web loads `@sentry/vue` lazily after the app mounts, so monitoring never delays the inbox. A temporary Vue error handler buffers up to 20 errors until the SDK is ready. Development, E2E runs and builds without a DSN never initialise it.
+Cookie-Web loads `@sentry/vue` when the browser is idle after the app mounts, or after two seconds at the latest, so the SDK download never competes with the first view and its requests. Until it starts, Vue errors, uncaught errors and unhandled rejections are buffered (the first 20) and reported once it does. The page-load span still starts at the time origin and Web Vitals are read from buffered entries; requests made before the SDK starts get no `http.client` span, and a session replay begins when the SDK starts. Development, E2E runs and builds without a DSN never initialise it.
 
 - Envelopes are posted to the same-origin `/monitoring` path, which `vercel.json` rewrites to the project's Sentry envelope endpoint. Ad and privacy blockers cancel direct requests to `*.ingest.sentry.io`, so without the tunnel those browsers' errors would never arrive.
 - Outgoing events are rebuilt from an allowlist rather than filtered: standard error types, same-origin `/assets/*.js` stack locations with line and column, validated source-map debug IDs, release and environment. Messages, breadcrumbs, request metadata, Vue props and free-form context are dropped. This trades error-message detail for mailbox privacy.
