@@ -326,7 +326,9 @@ The Documents dashboard is a folder browser: it shows one folder at a time, subf
 ### What can be uploaded
 
 - **Any file type.** There is no allow-list; the only limit is **25 MB per file**. Larger files are refused with `413` before any bytes are stored, and a user may start at most 60 uploads per minute (`429` beyond that).
-- **Upload** in the toolbar, or drop files anywhere on the pane, adds them to the folder currently shown. Files can also be dropped onto a folder card, or onto a folder in the sidebar, and moved later from the item menu.
+- **Upload** in the toolbar adds files to the folder currently shown.
+- **Drag files in from the desktop** and drop them anywhere on the Documents dashboard, its header and the starred, tag, and search lists included, to add them to the folder currently shown (the root when none is open). The dashboard is outlined while files are dragged over it. Drop them onto a folder card, or onto a folder in the sidebar tree, to add them to that folder instead; the sidebar takes drops while a document is open too. A toast names the folder the files went to, or says how many could not be uploaded. Folders cannot be uploaded: one dragged in is skipped with a message, so drop the files inside it instead. Files dropped into an open document belong to the editor, which takes images.
+- Uploaded files and documents can be dragged onto a folder card or a sidebar folder to move them, or moved later from the item menu.
 - The file's type is detected from its first bytes for JPEG, PNG, GIF, WebP, and PDF. Anything else keeps the type the browser declared, or `application/octet-stream` when it declares none. The stored name is trimmed to 255 characters.
 
 ### Where files live
