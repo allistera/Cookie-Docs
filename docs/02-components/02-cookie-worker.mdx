@@ -299,6 +299,8 @@ Cloudflare Email Routing
 
 Forwarding is primary. Parsing above 10 MiB, optional storage/indexing, AI, attachment, or monitoring failures never intentionally block it. Only spam scored at least `0.98` moves out of Inbox. The 15-minute cron retries up to three stale pending/failed classifications and also repairs eligible search-index drift without re-forwarding mail.
 
+One kind of message is stored but not forwarded: mail the forwarding mailbox itself auto-forwarded to Cookie. Gmail marks its auto-forwards with an envelope sender of the form `<account>+caf_=<recipient>@gmail.com`. When that account is `FORWARD_TO`, Gmail already holds the original, so sending it back added nothing and Gmail rate limited the copies (`421 4.7.28`), which made it redeliver stored messages for hours. The Worker logs `forward_skipped_auto_forwarded` for these and sets `cookie.forward.outcome` to `skipped_auto_forwarded`.
+
 **Interactive version:** [inbound mail flow diagram](/Cookie-Docs/diagrams/inbound-mail.html).
 
 ## Search and drift repair
