@@ -189,12 +189,26 @@ is not revisited, and confirmed spam is never filed.
 
 ## The Feed
 
-**The Feed** sits under Paper Trail in the Email sidebar and lists the mail
+**The Feed** sits under Paper Trail in the Email sidebar and shows the mail
 carrying the **Newsletters** label that arrived today, by your device's
-calendar day. It lists a newsletter whether or not it has been marked Done, and
-marking one Done from The Feed leaves the row in place. Mail you sent is left
-out, and the list is empty when no newsletter has arrived yet or no Newsletters
-label is in use.
+calendar day. It reads like a blog rather than a list: each newsletter is a
+post, newest first, with its sender, time and subject as the heading and its
+content open underneath, so the day's newsletters can be read in one scroll
+without opening any of them. Mail you sent is left out, and The Feed is empty
+when no newsletter has arrived yet or no Newsletters label is in use.
+
+A newsletter is shown whether or not it has been marked Done. **Done** on a
+post marks it done (and read) and leaves the post in place, wearing a Done
+badge. The post's title opens it in the reader for everything else: reply,
+labels, snooze, unsubscribe and attachments. Reading a post in The Feed does
+not mark it read by itself; an unread newsletter keeps its dot until it is
+opened or marked Done.
+
+A post's content is the same sandboxed rendering the reader uses. Remote images
+load straight away for Important mail and for senders you have accepted, and
+sit behind **Show images** otherwise. Content is fetched a few posts ahead of
+the part of the feed on screen instead of all at once, so a long day of
+newsletters costs only what is read.
 
 The Feed is a view, not a folder: it opens the Newsletters label's list with a
 today flag (`/inbox?filter=label&label=Newsletters&received=today`) and narrows
@@ -202,7 +216,7 @@ the loaded rows in the browser, so it needs no route, table, migration or
 Worker change of its own. The label list is newest first, so **Load more** only
 appears while the oldest loaded row is itself from today. Newsletters is an
 ordinary label, applied by hand, by a rule or by AI auto-tagging, and still has
-its own entry in the sidebar's Labels section listing every day's mail.
+its own entry in the sidebar's Labels section listing every day's mail as rows.
 
 ## ntfy notifications
 
