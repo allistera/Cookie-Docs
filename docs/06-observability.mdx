@@ -5,6 +5,10 @@ description: Where Cookie's errors, traces, metrics, logs and health signals go,
 
 Cookie runs on free and pay-per-use tiers, so observability is deliberately small: one Sentry project for errors, metrics and browser telemetry, Honeycomb for Worker traces, two Analytics Engine datasets that time every request and every database query, the platforms' own log views, and a handful of checks that turn a silent failure into a Sentry issue. Every signal follows the same privacy rule — operation names, route templates, outcomes, counts, status codes and durations leave the system; mail content, addresses, user identity, URLs with tokens, SQL text and parameters, and secrets never do.
 
+## Internal monitoring environment
+
+The self-hosted Prometheus, Pyrra, Grafana and Netdata environment is documented in [Internal observability](/internal-observability), including collection paths, SLO semantics, persistent storage and operational checks. The sections below describe application instrumentation and external telemetry services.
+
 ## Signals at a glance
 
 | Component | Errors | Traces | Metrics | Logs | Health |
