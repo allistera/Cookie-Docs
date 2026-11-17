@@ -402,7 +402,7 @@ Without the `FILES` binding the upload route answers `503`, so a Worker deployed
 
 Authenticated `POST /run`, `POST /run?phase=today`, and the legacy `POST /run?phase=digest` all run the same triage phase. Manual refresh bypasses the schedule gate. `cookie-web-tasks` continues to call the `today` alias, so existing clients need no migration.
 
-News fetching, news ranking, and per-email task extraction no longer run. Existing `daily_news` snapshots and extracted email tasks remain stored and readable through `GET /tasks`; no replacement news job is scheduled. GitHub and Product Hunt credentials are no longer needed by this worker. Incoming-message classification in `mail-app-ingest` remains a separate pipeline.
+News fetching, news ranking, and per-email task extraction are disabled. Existing `daily_news` snapshots and extracted email tasks remain stored and readable through `GET /tasks`; no news job is scheduled. This worker does not require GitHub or Product Hunt credentials. Incoming-message classification in `mail-app-ingest` remains a separate pipeline.
 
 ## Cookie MCP server
 

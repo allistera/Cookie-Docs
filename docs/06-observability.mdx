@@ -5,8 +5,6 @@ description: The Tower monitoring environment, Prometheus collection, Pyrra obje
 
 The internal monitoring environment runs on Unraid Tower. Prometheus collects and stores metrics, Pyrra translates service-level objectives into Prometheus rules, and Grafana presents those results alongside external application telemetry. Netdata supplies host metrics. Application-side errors and traces also flow to Sentry and Honeycomb; request and query timings are recorded in Analytics Engine.
 
-This document is a configuration snapshot verified on **17 November 2026** using Tower's files, container mounts and arguments, Prometheus's targets API, and Grafana's datasource and dashboard APIs. All four configured scrape targets reported healthy at inspection. This establishes collection reachability, not end-to-end application health or notification delivery. No production configuration was changed for this document.
-
 ## Architecture and boundaries
 
 ```mermaid
@@ -49,7 +47,7 @@ The core services use the Docker network `grafana_default`. Grafana's Worker das
 
 ## Services and access
 
-| Service | Role | Observed access |
+| Service | Role | Access |
 | --- | --- | --- |
 | `grafana` | Dashboards and external datasource queries | Tower loopback and Tailscale address, host port `3007` to container `3000` |
 | `prometheus` | Scrapes, time-series storage, recording rules and alert evaluation | Tower loopback and Tailscale address, port `9090` |
@@ -58,7 +56,7 @@ The core services use the Docker network `grafana_default`. Grafana's Worker das
 | `vercel-exporter` | Vercel deployment/build metrics | Internal endpoint `http://vercel-exporter:9108/metrics` |
 | `netdata` | Host resource telemetry | Scraped on Tower's LAN address, port `19999` |
 
-For private access use `http://tower-1.taild247d7.ts.net:3007`, `:9090` or `:9099` from an authorised Tailscale client. These are observed bindings and configured URLs; browser access and public DNS/tunnel routing were not tested in this inspection. Loopback URLs refer to Tower, not the operator's laptop.
+For private access use `http://tower-1.taild247d7.ts.net:3007`, `:9090` or `:9099` from an authorised Tailscale client. Loopback URLs refer to Tower, not the operator's laptop.
 
 Grafana also lists a second Prometheus datasource (`prometheus-1`), an Alertmanager datasource and a Netdata Cloud datasource. Registration alone does not prove those integrations are healthy or used by a particular dashboard.
 
@@ -71,7 +69,7 @@ Grafana also lists a second Prometheus datasource (`prometheus-1`), an Alertmana
 | `tower-netdata` | `192.168.1.123:19999/api/v1/allmetrics?format=prometheus` | 30 seconds | Tower host metrics |
 | `prometheus` | `localhost:9090/metrics` | 30 seconds | Prometheus's own runtime metrics |
 
-The global rule evaluation interval is 30 seconds. Prometheus uses retention limits of **15 days** and **10 GB**; either limit can constrain available history. Seven-day SLO calculations require sufficient retained samples. A newly installed or reset series has only the history accumulated since that point.
+The global rule evaluation interval is 30 seconds. Prometheus uses retention limits of **15 days** and **10 GB**; either limit can constrain available history. Seven-day SLO calculations require sufficient retained samples.
 
 `up{job="cloudflare-workers"}` reports scrape success. `cloudflare_exporter_up` reports the exporter's upstream collection state. Check both: an HTTP endpoint can respond successfully while its upstream telemetry collection has failed. A healthy scrape also does not independently prove that every exported value is fresh.
 
@@ -89,11 +87,11 @@ The global rule evaluation interval is 30 seconds. Prometheus uses retention lim
 
 Prometheus loads `/pyrra-rules/*.yaml` and `/etc/prometheus/cloudflare-late.yaml`. Preserve objective files as source configuration; hand edits to generated rules can be overwritten. Preserve the existing `/pyrra-rules` mount when recreating Prometheus.
 
-Back up persistent configuration and state using a consistent database/filesystem backup procedure. Configuration recovery restores collection and definitions; restoring metric history requires the Prometheus data as well. Backup scheduling and restore success were not audited here. Keep API credentials out of documentation, dashboard exports and source control.
+Back up persistent configuration and state using a consistent database/filesystem backup procedure. Configuration recovery restores collection and definitions; restoring metric history requires the Prometheus data as well. Keep API credentials out of documentation, dashboard exports and source control.
 
 ## How SLOs are calculated
 
-There are 34 objective files covering 17 observed Workers, including the exporter and `northlink-automation` as well as Cookie services. This inventory is broader than Cookie's application Worker list.
+There are 34 objective files covering 17 Workers, including the exporter and `northlink-automation` as well as Cookie services. This inventory is broader than Cookie's application Worker list.
 
 ```mermaid
 flowchart LR
@@ -114,7 +112,7 @@ flowchart LR
 
 ### Reliability
 
-The ratio indicator uses `cloudflare_worker_errors_total` over `cloudflare_worker_requests_total`, filtered by Worker and grouped by account. Reliability is `1 - errors / invocations`. The inspected `cookie-web-emails` objective targets **99.9% over seven days**.
+The ratio indicator uses `cloudflare_worker_errors_total` over `cloudflare_worker_requests_total`, filtered by Worker and grouped by account. Reliability is `1 - errors / invocations`. The `cookie-web-emails` objective targets **99.9% over seven days**.
 
 This measures invocations completing without Cloudflare runtime errors. It does not establish HTTP success, reachability, delivery correctness or execution of a missed scheduled job. No invocations means there is no request-based result.
 
@@ -124,11 +122,11 @@ This measures invocations completing without Cloudflare runtime errors. It does 
 
 The latency objective targets **99.9% good active observation intervals over seven days**. It is not a statement that 99.9% of individual requests finished within 500 ms. Each included evaluation contributes an observation rather than a request count; low-traffic and high-traffic intervals are not weighted by their request volumes. The duration units follow the exporter's metric contract.
 
-### Ingestion exception and reset
+### Ingestion targets
 
-The live `mail-app-ingest` reliability objective targets **95%**, while its latency objective remains **99.9%**. Both select `slo_reset="20261117T155600Z"`. Prometheus adds that label to ingestion request/error counters at scrape time and to its latency-good recording rule. Those objectives exclude samples before the reset; they do not immediately represent seven complete days.
+The `mail-app-ingest` reliability objective targets **95%**, while its latency objective targets **99.9%**. Use the objective's label filters when querying its metrics.
 
-The current Grafana Worker dashboard still labels its table as a uniform 99.9% target and divides reliability error ratios by `0.001` for budget calculations. Its queries also do not explicitly select the ingestion reset label. Consequently, ingestion's Grafana budget display can disagree with the current Pyrra objective and can combine historical series across the reset. Use the objective definition and its scoped results when interpreting ingestion. This documentation records the discrepancy; it does not change the dashboard.
+The Grafana Worker dashboard uses a uniform 99.9% target and divides reliability error ratios by `0.001` for budget calculations. This differs from ingestion's 95% reliability target. Use Pyrra's objective-specific results to interpret ingestion's error budget.
 
 For any objective, remaining budget is `1 - bad_fraction / (1 - target_fraction)`. Negative remaining budget means the allowance has been exceeded. A missing denominator or absent signal must remain unknown, rather than being presented as perfect compliance.
 
@@ -141,11 +139,11 @@ For any objective, remaining budget is `1 - bad_fraction / (1 - target_fraction)
 | `cookie-web-sentry` | Frontend issues and performance |
 | `cookie-web-vercel` | Vercel deployments and builds |
 
-The Vercel dashboard explicitly states that runtime observability is unavailable on the current plan. The Sentry dashboard description mentions historical exporter gauges, but the inspected Prometheus scrape configuration has no Sentry exporter job. Treat historical descriptions as insufficient evidence of a current ingestion path.
+The Vercel dashboard explicitly states that runtime observability is unavailable on the current plan. Prometheus has no Sentry exporter scrape job; Sentry telemetry is queried through its Grafana datasource.
 
-The inspected Pyrra objectives enable burn-rate alerts and disable absent-series alerts. The Worker dashboard counts `ALERTS` with `alertname="ErrorBudgetBurn"` and `alertstate="firing"`. That proves what the panel queries, not that a notification reaches an operator.
+The Pyrra objectives enable burn-rate alerts and disable absent-series alerts. The Worker dashboard counts `ALERTS` with `alertname="ErrorBudgetBurn"` and `alertstate="firing"`. That proves what the panel queries, not that a notification reaches an operator.
 
-The inspected Prometheus configuration contains no `alerting` destination block. Although Grafana has an Alertmanager datasource, this does not establish a Prometheus-to-Alertmanager notification route. End-to-end delivery, receivers and notification policies remain unverified. A Tower outage also removes this monitoring stack's own view of the incident; it is not an independent external availability monitor.
+The Prometheus configuration contains no `alerting` destination block. Although Grafana has an Alertmanager datasource, this does not establish a Prometheus-to-Alertmanager notification route. Notification delivery requires a configured alert route and receiver. A Tower outage also removes this monitoring stack's own view of the incident; it is not an independent external availability monitor.
 
 ## Operational checks
 
@@ -159,7 +157,7 @@ flowchart TD
   Traffic -->|No| Unknown[No signal: inspect traffic and freshness]
   Traffic -->|Yes| Rules{Recording rules loaded and evaluating?}
   Rules -->|No| Config[Check objective generation, mounts and rule errors]
-  Rules -->|Yes| Panel[Check datasource, filters, reset labels and target assumptions]
+  Rules -->|Yes| Panel[Check datasource, label filters and target assumptions]
 ```
 
 Start with Prometheus `/targets`, `/rules` and `/alerts`. Useful Explore queries against `tower-prometheus` include:
