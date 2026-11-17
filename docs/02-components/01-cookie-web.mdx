@@ -260,6 +260,18 @@ Mail, Documents and Tasks can dock a read-only day calendar on the right. The ca
 
 Clicking an event opens a details card with its time, calendar and location, the same Join button, and **Open in Calendar**, which opens that event in the Calendar view; Escape closes the card. Nothing is created or edited from the sidebar. While it is open it takes the place of the next-event chip beside the inbox tabs, and on a daily note it follows the note's date and replaces the daily-note calendar panel. It reads the existing `GET /calendars` and `GET /calendar-events` routes, refreshes every five minutes, on focus and when the tab becomes visible again, and moves to the new day at midnight unless a daily note pins it. Below 1100px wide it floats over the content instead of narrowing it, and on phones (760px and below) it is hidden and the chip stays.
 
+## Calendar invitations
+
+An email that carries a calendar invitation to the mailbox opens with an invitation card above the message: who invited, the event's title, its time on the reader's own clock, whether it repeats, and its location. **Accept**, **Maybe** and **Decline** sit under it. Opening the email tells the organiser nothing; pressing one of the three sends them a calendar reply, which their calendar reads as the guest's answer, and a copy lands in Sent under the invitation. The answer is the mailbox's, so it is the same on every device, and the card states it with the day the organiser was told. Pressing a different answer later tells the organiser again.
+
+Accepting or answering maybe puts the event on Cookie's calendar, in the default calendar when that is one of Cookie's own, and **Go to event** opens it. Declining takes it off. An invitation holds one calendar entry however many times it is answered, updated or re-read.
+
+When the organiser changes the event, the next email about it updates the same invitation and moves its calendar entry. If they changed the time, the card shows the new time and asks for an answer again; a change to the details alone keeps the answer. A cancellation shows the event as cancelled and removes it from the calendar. Opening an older email about the same event shows the latest details with a note that the message is an earlier version. The calendar changes when the email is read, not when it arrives.
+
+Cookie sends mail as one address and can only answer for that address. An invitation sent to another of the person's addresses, such as the Gmail address their mail is forwarded from, is explained on the card and nothing is sent, since an answer from Cookie's address would not count for that guest; the plain **Add to calendar** offer stays for those. An invitation to a single date of a repeating event is answered on its own, and is added to the calendar only when the series is not already there. A repeating event with a pattern the calendar cannot express (every second week, the last Friday) is added as its first date only.
+
+The card is `src/components/InvitationCard.vue`, loaded as its own chunk when an invitation is open, with its wording in `src/lib/calendarInvitation.js`. It reads `calendar_invitation` from `GET /messages/calendar-invite` and answers through `POST /send/invitation-reply`; [Cookie-Worker](/components/cookie-worker) documents both.
+
 ## Several messages and emails open at once
 
 Only one message fits the composer and one email the reader, so the others wait as tabs along the bottom right of the screen, each titled by its subject (a message with no subject yet reads "New message"). Clicking a tab brings it back; clicking the tab of whatever is open puts it away again, and the close button on a tab removes it.

@@ -15,11 +15,11 @@ Eleven Workers serve Cookie's browser APIs on custom domains, cookie-mcp serves 
 | `cookie-web-calendar` | HTTP | `/calendar-events`, `/calendars`, and `POST /calendar-availability`, including recurrence, ICS sync, fresh availability reads, and natural-language event drafts |
 | `cookie-web-emails` | HTTP | keyset-paginated `/emails` lists, `/emails/state` bootstrap, composer preferences, and out-of-office settings |
 | `cookie-web-labels` | HTTP | label and label-rule CRUD |
-| `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, and contacts |
+| `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, contacts, and calendar invitation state |
 | `cookie-web-notifications` | HTTP + cron | `/notification-event` claim/ack lease for browser notifications; `/ntfy` settings (per-user server, topic and encrypted access token) and the every-minute publish of queued new-mail alerts to each user's ntfy server |
 | `cookie-web-receipts` | HTTP + email clients | authenticated receipt status plus an unauthenticated, flood-guarded tracking pixel |
 | `cookie-web-search` | HTTP | Meilisearch mail/federated search, saved mail views, and mailbox Q&A |
-| `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, automatic replies, cancellation, follow-up state, and `/send/flush` |
+| `cookie-web-send` | HTTP + service binding | immediate/scheduled Resend delivery, automatic replies, calendar invitation replies, cancellation, follow-up state, and `/send/flush` |
 | `cookie-web-tasks` | HTTP + service binding + hourly cron | AI Today, Tasks/projects/subtasks/labels/saved filters, Todoist sync, Documents, preferences, and enricher refresh |
 | `mail-app-ingest` | Email + 15-minute cron | inbound parse/store/forward, classification, indexing, and recovery |
 | `data-enricher` | Hourly cron + HTTP | inbox triage only |
@@ -276,6 +276,42 @@ A complete response contains `complete: true`, `busy` as numeric epoch-milliseco
 Native recurrence follows Cookie's daily/weekly/monthly/yearly model, including selected weekdays. Fresh ICS checks use node-ical's expansion for daily/weekly/monthly/yearly RRULEs, EXDATE exclusions, and individual RECURRENCE-ID overrides; explicit source timezones preserve instants across DST. Date-only ends are exclusive. Cancelled and transparent events do not block times. Unknown source timezones, ambiguous floating/native times, RDATE, EXRULE, RANGE overrides, VFREEBUSY components, subdaily or multiple-times-per-day rules, and unsupported/non-Gregorian rules block suggestions. Dates before 1970 in a feed, durations over 30 days, more than 1,000 feed events or native masters, more than 5,000 busy occurrences, and native recurrence beyond safe stepping limits also fail closed. Users can select another calendar or range; cached rows are never a fallback for incomplete coverage.
 
 ICS `DURATION` values support only positive elapsed hours, minutes, and seconds (`PT…`, optionally prefixed with `+`), bounded to 30 days. Nominal day/week forms such as `P1D` or `P1W`, malformed values, and unsupported duration parameters make the source incomplete before parsing; this avoids incorrect daylight-saving boundaries and parser logging of raw values. All-day events with explicit, exclusive `DTEND` remain supported. A producer using nominal durations must supply explicit end dates/times before that feed can provide availability suggestions.
+
+## Calendar invitations
+
+Two Workers handle an invitation received by email. `cookie-web-messages` records what each mail says about the event when it is read; `cookie-web-send` answers the organiser. Both keep the event's calendar entries in step through `shared/calendarInvitation.js`. The tables are in the [data model](/data-model) (migration `0113`).
+
+An invitation is identified by the iCalendar `UID` and, for one occurrence of a repeating event, that occurrence's `RECURRENCE-ID`. Each `METHOD:REQUEST` or `METHOD:CANCEL` attachment is one revision of it, ordered by `SEQUENCE` and then `DTSTAMP`.
+
+`GET /messages/calendar-invite?id=<message>` returns `calendar_invite` (the event **Add to calendar** offers, unchanged) and `calendar_invitation`, which is `null` for a calendar file that is not an invitation to this mailbox: one with no method, a guest's `REPLY`, or an event the person organised. Reading the message applies its revision:
+
+| The message carries | Effect |
+| --- | --- |
+| The first revision seen | A new invitation row; nothing on the calendar yet |
+| A newer revision | The row and any calendar entry made from it are updated. A higher `SEQUENCE` clears the answer, because the organiser changed what was answered; a newer `DTSTAMP` alone keeps it |
+| A cancellation at or after the stored revision | The invitation is marked cancelled and its calendar entry removed |
+| The same or an older revision | Nothing changes. The response has `current: false` for an older one and still describes the latest revision |
+| A revision naming a different organiser | Ignored: only an event's organiser may change or cancel it |
+
+`calendar_invitation` holds the event's title, location, `start_at`, `end_at` and `all_day`, `recurring` and `occurrence`, the `organizer`, the `attendee` address matched to the person, the `sender` address Cookie sends as, `can_reply` with `reply_blocked` when it is false, the stored `response` and `responded_at`, and `event` (the id and date of the first calendar entry) when it is on the calendar.
+
+`POST /send/invitation-reply` takes `{ invitationId, response, timeZone }`, where `response` is `accepted`, `tentative` or `declined` and `timeZone` is the browser's IANA zone. It mails the organiser an iTIP `REPLY` (RFC 5546) as a `text/calendar; method=REPLY` part (RFC 6047) carrying the invitation's `UID`, `SEQUENCE` and `RECURRENCE-ID`, the organiser, and one `ATTENDEE` with the answer as `PARTSTAT`. It then stores the answer and replaces the invitation's calendar entries, or deletes them for a decline. It answers `{ invitation: { id, response, responded_at, event }, sent }`; `sent` is `false` when the same answer was already on record, in which case no mail goes out and the calendar entry is put back if it had been removed by hand.
+
+| Status | Meaning |
+| --- | --- |
+| `403` `INVITATION_ALIAS` | The invitation names another of the person's addresses. Cookie sends as `EMAIL_FROM` only and does not answer for an address it cannot send from |
+| `403` `INVITATION_NOT_INVITED` | None of the guests is one of the person's addresses |
+| `409` `INVITATION_CANCELLED` | The organiser cancelled the event |
+| `409` `INVITATION_CHANGED` | The organiser revised or cancelled the event while the reply was being sent |
+| `429` | The per-minute sending allowance, shared with `POST /send`, is spent |
+| `503` `DELIVERY_PENDING` | The provider has not confirmed the reply. Retrying the same request resumes the same delivery |
+| `502` `DELIVERY_REJECTED`, `DELIVERY_UNCERTAIN` | The provider refused the reply, or it could not be confirmed in time. The invitation is left unanswered and can be answered again |
+
+Each answer is one delivery in the outbound ledger, keyed by the invitation, the `SEQUENCE` answered, the number of answers already given, and the response. A retry of a request therefore resumes the same delivery and the provider is never asked to send it twice, while a change of mind, including back to an earlier answer, is a new delivery.
+
+Calendar entries are placed on the clock of the `timeZone` sent with the answer, and later revisions reuse that zone. A daily, weekly, monthly or yearly series becomes one repeating row; weekdays and month days carry over only when the first occurrence falls on the same date in the organiser's zone and the person's. Any other rule stores the first occurrence alone. An all-day invitation is one row per day.
+
+`cookie-web-messages` and `cookie-web-send` must hold the same `EMAIL_FROM`: the first uses it to report whether an invitation can be answered, the second enforces it.
 
 ## Cross-Worker calls
 

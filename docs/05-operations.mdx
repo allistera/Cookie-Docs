@@ -73,6 +73,21 @@ Cookie-Worker deploy validation always checks the whole repository before publis
 
 Cookie-Worker's `RUNBOOK.md` contains the detailed production, search-repair, rotation, incident, and rollback checklists.
 
+### Calendar invitations
+
+Roll out in this order: merge Cookie-Web (migration `0113` runs from `main`), deploy `cookie-web-messages` and `cookie-web-send`, then let Vercel publish the web client. Before the migration the messages Worker logs `calendar_invitation_sync_failed` and returns no invitation, so the reader keeps its **Add to calendar** offer; nothing fails.
+
+The automated tests run the whole flow on PostgreSQL with a stand-in for the mail provider. Whether an organiser's calendar accepts the reply can only be seen with real mailboxes, so check it once after the first deploy, and again after any change to the reply's content:
+
+1. From a second mailbox with a calendar (a Google account and an Outlook.com account cover the two common organisers), invite the address Cookie sends as (`EMAIL_FROM`) to an event.
+2. Open the invitation in Cookie. Confirm the organiser has received nothing, then press **Accept**. The organiser's event should show the guest as accepted, and the organiser's inbox a mail titled "Accepted: …" with `invite.ics`.
+3. Press **Decline** and confirm the organiser's event follows.
+4. Change the event's time from the organiser's calendar. Open the update in Cookie: the card shows the new time with no answer, and Cookie's calendar has one entry at the new time.
+5. Delete the event from the organiser's calendar. Open the cancellation in Cookie: the card reads cancelled and the entry is gone.
+6. Invite a different address of the same person (the Gmail address their mail is forwarded from). The card should explain that Cookie cannot answer for it, and the organiser should receive nothing.
+
+If the organiser gets the mail but their calendar does not move, compare the received `invite.ics` part's `Content-Type` with `text/calendar; charset=utf-8; method=REPLY`: a provider that drops `method` turns the reply into a plain attachment.
+
 ### September review fixes
 
 Deploy `cookie-web-send` with follow-up support **before** the Cookie-Web compatibility adapter. Apply Cookie-Web migration `0065_task_subtree_projects.sql` to repair children left in old projects and index parent lookups. The updated tasks Worker moves each complete subtree in a transaction and serializes structural changes per owner. Deploy it promptly with the repair so older handlers cannot recreate the inconsistency.
