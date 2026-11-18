@@ -12,6 +12,8 @@ Additionally for an interactive architecture view using archify: <https://allist
 
 - `docs/` holds the content as MDX, one file per page, with `meta.ts` files
   controlling section order. Numbered filenames set the sidebar order.
+  `docs/images/screenshots/` holds the feature screenshots shown on the
+  Screenshots page, captured from Cookie-Web's fixture-backed `e2e` mode.
 - `diagrams/` holds the interactive architecture and workflow diagram sources.
   Their rendered HTML is served from `public/diagrams/`.
 - `blume.config.ts` configures the site title and the GitHub Pages base path.
