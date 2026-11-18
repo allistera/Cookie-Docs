@@ -1,0 +1,152 @@
+---
+title: Screenshots
+description: Full-window screenshots of each main feature of the Cookie web app, taken against demo data.
+---
+
+A visual tour of [Cookie-Web](/components/cookie-web), one full-window screenshot per main feature. Click any image to enlarge it.
+
+:::note
+Every screenshot shows demo data, not a real mailbox. They are captured from Cookie-Web running in its `e2e` mode, where the app is served by the fixture API instead of the production Workers, at a 1440 px wide window. Senders, tasks, events, and documents are invented for the fixtures.
+:::
+
+## Email
+
+### AI Today
+
+The landing view at `/`. It greets you with the day's count, lists suggested to-dos drawn from tasks and mail, groups mail that needs a reply or a review, summarises what was classified as noise, and ends with personalised news. See [AI features](/ai-features) for how each card is produced.
+
+![AI Today with suggested to-dos, email triage groups, and The World Today](./images/screenshots/ai-today.png)
+
+### Inbox
+
+The classic inbox at `/inbox`. Mail is split into **Important** and **Other**, grouped by day, with label pills and unread markers on each row. The sidebar holds the areas (AI Today, Paper Trail, The Feed), the boxes, and your labels.
+
+![Inbox on the Other tab, grouped by Today, Yesterday, Last seven days, and Earlier](./images/screenshots/inbox.png)
+
+### Dark theme
+
+**Settings → Appearance** switches between light, dark, and the system theme. The same inbox in the dark theme:
+
+![The inbox in the dark theme](./images/screenshots/inbox-dark.png)
+
+### Reading an email
+
+Opening a row slides the reader over the list. It shows the AI summary under the subject, the message's labels, the conversation with earlier messages collapsed, and attachments. The toolbar marks the email done, snoozes it, stars it, or minimises it to a tab.
+
+![The reader showing a two-message conversation with an AI summary and an attachment](./images/screenshots/reader.png)
+
+### Composing
+
+**Compose** opens the composer in the corner of the window, so the inbox stays usable behind it. The header carries the subject and recipients; the footer sends now or later, attaches files, sets a follow-up reminder, shares availability, and opens AI drafting.
+
+![The composer with a drafted message](./images/screenshots/composer.png)
+
+### Several windows open at once
+
+Messages being written and emails being read can be minimised to tabs along the bottom of the window. A tab reopens what it holds, and the tabs follow you between views.
+
+![An open email with two minimised tabs along the bottom: a draft and another email](./images/screenshots/window-dock.png)
+
+### Drafts
+
+Anything you start writing is saved and listed at `/drafts` until it is sent or discarded.
+
+![The Drafts list with one saved draft](./images/screenshots/drafts.png)
+
+### Scheduled sends
+
+Mail queued with **Send later** waits at `/scheduled`. Each message can be cancelled before it goes out, which returns it for editing.
+
+![The Scheduled view with three messages queued to send later](./images/screenshots/scheduled.png)
+
+### Paper Trail
+
+Receipts, confirmations, invoices, and other transactional mail in one list. Each message also stays in the inbox; the Paper Trail pill marks it wherever it is listed.
+
+![Paper Trail listing receipts and confirmations](./images/screenshots/paper-trail.png)
+
+### The Feed
+
+Today's newsletters, read like a blog: each one is a post with its content open underneath, so the day's reading is a single scroll.
+
+![The Feed showing three of today's newsletters as posts](./images/screenshots/the-feed.png)
+
+## Search and assistant
+
+### Search
+
+The search box in the header searches mail, documents, and tasks together at `/search`. The chips narrow the results to one kind, and the button on the right hands the query to the assistant.
+
+![Search results for "floor plan" across mail, documents, and tasks](./images/screenshots/search.png)
+
+### Cookie Assistant
+
+The AI button in the header opens the assistant in a drawer beside the current view. It answers questions from your mail, documents, and tasks, and lists the items it drew on as sources under the answer.
+
+![The Cookie Assistant drawer answering a question with two sources](./images/screenshots/assistant.png)
+
+### Command palette
+
+Press `/` anywhere outside a text field to open Cookie Command. It runs actions such as composing, creating an event, or starting a document, and opens settings sections.
+
+![The command palette open over the inbox](./images/screenshots/command-palette.png)
+
+## Calendar
+
+### Week view
+
+The calendar at `/calendar` shows events from every calendar that is switched on in its sidebar, with dated tasks on their due date. The Day, Week, and Month switch sits at the top right.
+
+![The calendar week view with events and dated tasks](./images/screenshots/calendar-week.png)
+
+### Month view
+
+The month view shows the same events and tasks as chips. A scheduling conflict found in the coming days is called out above the grid.
+
+![The calendar month view with a scheduling conflict card](./images/screenshots/calendar-month.png)
+
+### Calendar sidebar
+
+The calendar button in the header, or the `]` key, opens today's agenda beside whichever view you are in, with a month picker and the next event called out.
+
+![The calendar sidebar open beside the inbox](./images/screenshots/calendar-rail.png)
+
+## Tasks
+
+### Today
+
+Tasks live at `/tasks`. **Today** gathers everything due today or overdue from every project, with priority, due time, labels, and project on each row. The sidebar holds the Inbox, favourites, nested projects, and task labels.
+
+![The Today task list with four tasks](./images/screenshots/tasks-today.png)
+
+### Board
+
+**Display** switches a list to a board, grouped by priority or by label.
+
+![A project shown as a board with one column per priority](./images/screenshots/task-board.png)
+
+### Task detail
+
+Opening a task shows its description, sub-tasks, comments, and activity on the left, and its schedule, time estimate, priority, and labels on the right.
+
+![The task detail panel with sub-tasks and comments](./images/screenshots/task-detail.png)
+
+## Documents
+
+### Folder browser
+
+`/documents` browses folders, documents, and uploaded files as a grid or a list. The sidebar shows starred documents, the folder tree, and tags.
+
+![The Documents folder browser](./images/screenshots/documents.png)
+
+### Editor
+
+Opening a document shows the block editor with the document's icon, title, and tags, and exports to Markdown or PDF.
+
+![The document editor with a note open](./images/screenshots/document-editor.png)
+
+## Settings
+
+`/settings` groups preferences by area: general, email, calendar, tasks, and documents, with a search box over the list. The Labels section is shown here.
+
+![Settings open on the Labels section](./images/screenshots/settings.png)
