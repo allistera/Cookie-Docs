@@ -272,6 +272,19 @@ Cookie sends mail as one address and can only answer for that address. An invita
 
 The card is `src/components/InvitationCard.vue`, loaded as its own chunk when an invitation is open, with its wording in `src/lib/calendarInvitation.js`. It reads `calendar_invitation` from `GET /messages/calendar-invite` and answers through `POST /send/invitation-reply`; [Cookie-Worker](/components/cookie-worker) documents both.
 
+## Cc and Bcc
+
+A message can carry Cc and Bcc recipients as well as the people it is written to.
+
+- **In the composer.** `+ cc` and `+ bcc` appear under the title while the subject or a recipient field has the focus, which it does when the window opens. Pressing one adds that line under the "to" field and puts the cursor in it. Each line takes addresses separated by commas and suggests contacts as the "to" field does. The cross at the end of a line removes it. Once the message itself is being written the two links go away, and so does a line that was added and left empty; a line that holds an address stays on show.
+- **In the reply box.** The same two links sit at the right of the "Reply to" heading. **Reply all** writes to the sender and the original "to" list and keeps the original Cc list on a Cc line, where it can be changed before sending. Switching between Reply and Reply all resets the Cc line to match; a Bcc is kept.
+
+To, Cc and Bcc share one limit of 20 recipients, and Send stays off while any entry is not an address. Tab runs subject, to, Cc, Bcc, then the message, skipping lines that are not shown. The links are reached with the pointer or by touch; the Tab order does not stop on them.
+
+Drafts, Send Later and an undone send keep all three lines. The Sent copy stores them too, including Bcc, which the delivered mail never shows. The Drafts and Scheduled lists still name only the "to" recipients.
+
+The lines are `src/components/ComposerCopies.vue`, shared by `ComposerWindow.vue` and the reply box in `TraditionalInboxView.vue` (which loads it as its own chunk). The browser sends `cc` and `bcc` to `POST /api/send` only when someone is on them. [Cookie-Worker](/components/cookie-worker#cc-and-bcc-recipients) documents the API side, and [Operations](/operations#cc-and-bcc) the order to deploy in.
+
 ## Several messages and emails open at once
 
 Only one message fits the composer and one email the reader, so the others wait as tabs along the bottom right of the screen, each titled by its subject (a message with no subject yet reads "New message"). Clicking a tab brings it back; clicking the tab of whatever is open puts it away again, and the close button on a tab removes it.

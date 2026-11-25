@@ -277,6 +277,17 @@ Native recurrence follows Cookie's daily/weekly/monthly/yearly model, including 
 
 ICS `DURATION` values support only positive elapsed hours, minutes, and seconds (`PT…`, optionally prefixed with `+`), bounded to 30 days. Nominal day/week forms such as `P1D` or `P1W`, malformed values, and unsupported duration parameters make the source incomplete before parsing; this avoids incorrect daylight-saving boundaries and parser logging of raw values. All-day events with explicit, exclusive `DTEND` remain supported. A producer using nominal durations must supply explicit end dates/times before that feed can provide availability suggestions.
 
+## Cc and Bcc recipients
+
+`POST /send` on `cookie-web-send` takes optional `cc` and `bcc` beside `to`. Each is a comma-separated list of addresses, as `to` is. A blank or absent line means nobody; a line that is present but unusable (an entry that is not an address, or not a string) rejects the request with `400` instead of sending without it. To, Cc and Bcc together are limited to 20 recipients.
+
+Both lines are passed to Resend as `cc` and `bcc`, kept in the delivery ledger with the rest of the frozen request, and written to the sent copy's `messages.recipients`, Bcc included. They join the idempotency key and the scheduled-send request hash only when someone is on them, so a request without copies keeps the key it had before these lines existed.
+
+- **Send Later.** `scheduled_sends.cc_addresses` and `bcc_addresses` hold the lines until the flush delivers them. `DELETE /send/scheduled` returns them as `ccAddresses` and `bccAddresses` so the composer can reopen the message as it was.
+- **Drafts.** `cookie-web-drafts` accepts `cc` and `bcc` on `POST /drafts` and `PATCH /drafts/:id` and returns them from `GET /drafts/:id`. A client that sends neither field leaves the stored lines alone, so an older client saving over a draft does not wipe them. The list summary carries only `to`.
+
+The four columns come from migration `0114`. Both Workers read them through `to_jsonb(row) ->> 'cc_addresses'`, which answers `NULL` for a column that does not exist yet, and write them with a statement of their own that runs only when a line is used or has changed. A Worker deployed before the migration therefore behaves as it did; only a draft or a Send Later that has a Cc or Bcc line fails, visibly, until the migration is applied.
+
 ## Calendar invitations
 
 Two Workers handle an invitation received by email. `cookie-web-messages` records what each mail says about the event when it is read; `cookie-web-send` answers the organiser. Both keep the event's calendar entries in step through `shared/calendarInvitation.js`. The tables are in the [data model](/data-model) (migration `0113`).

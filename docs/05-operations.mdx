@@ -88,6 +88,14 @@ The automated tests run the whole flow on PostgreSQL with a stand-in for the mai
 
 If the organiser gets the mail but their calendar does not move, compare the received `invite.ics` part's `Content-Type` with `text/calendar; charset=utf-8; method=REPLY`: a provider that drops `method` turns the reply into a plain attachment.
 
+### Cc and Bcc
+
+Roll out in this order: deploy `cookie-web-send` and `cookie-web-drafts` from Cookie-Worker, then merge Cookie-Web (migration `0114` runs from `main` and Vercel publishes the client that offers the two lines). The Workers come first here because a Worker that predates the change ignores `cc` and `bcc`: a message sent through it would go out without the people copied on it, and nothing would say so.
+
+Those Workers run with or without the migration. In the short time between Vercel publishing the client and the migration finishing, a draft or a Send Later that has a Cc or Bcc line fails to save and says so; an immediate send is unaffected.
+
+To check it after the rollout, send a message from the composer with one address on Cc and another on Bcc. Each should receive it, the Cc recipient should see the Cc line and no Bcc, and the Sent copy's `recipients` should hold all three lines.
+
 ### September review fixes
 
 Deploy `cookie-web-send` with follow-up support **before** the Cookie-Web compatibility adapter. Apply Cookie-Web migration `0065_task_subtree_projects.sql` to repair children left in old projects and index parent lookups. The updated tasks Worker moves each complete subtree in a transaction and serializes structural changes per owner. Deploy it promptly with the repair so older handlers cannot recreate the inconsistency.
