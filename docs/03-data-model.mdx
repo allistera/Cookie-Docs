@@ -3,7 +3,7 @@ title: Data model
 description: The shared Supabase Postgres schema, migration conventions, and how Cookie-Web and Cookie-Worker stay compatible with it.
 ---
 
-The Cookie mail application uses one Supabase Postgres database. The migrations live in the **Cookie-Web** repository under `migrations/`, but **Cookie-Worker** reads and writes the same tables through a Hyperdrive-proxied connection — there is no separate schema or sync process between them. Cookie-Agents is outside this data model and owns a separate Render PostgreSQL database.
+The Cookie mail application uses one Supabase Postgres database. The migrations live in the **Cookie-Worker** repository under `migrations/`, next to the Workers that read and write those tables through a Hyperdrive-proxied connection. Cookie-Web and Cookie-iOS reach the data only through those Workers. The migrations lived in Cookie-Web until November 2026, so older rollout notes may still call one a Cookie-Web migration; the files and their numbers are unchanged. Cookie-Agents is outside this data model and owns a separate Render PostgreSQL database.
 
 ## Conventions
 
@@ -19,7 +19,7 @@ export DATABASE_URL='postgres://...'
 ./migrations/migrate.sh
 ```
 
-The script creates `schema_migrations` if needed and safely skips files already recorded. Pushes to `main` that touch `migrations/**` run the same script automatically via the `Migrate Database` GitHub Actions workflow. Use the Supavisor **session pooler** on port `5432` for GitHub-hosted runs — GitHub runners can't rely on an IPv6-only direct host.
+The script creates `schema_migrations` if needed and safely skips files already recorded. Pushes to Cookie-Worker's `main` that touch `migrations/**` run the same script automatically via the `Migrate Database` GitHub Actions workflow, which reads that repository's `DATABASE_URL` secret. Use the Supavisor **session pooler** on port `5432` for GitHub-hosted runs — GitHub runners can't rely on an IPv6-only direct host.
 
 ## Schema areas
 
@@ -54,7 +54,7 @@ The script creates `schema_migrations` if needed and safely skips files already 
 | Database health | `0112` | `db_query_stats`: the previous reading of `pg_stat_statements`, one row per statement with its call count and total execution time, which `mail-app-ingest` compares against every 15 minutes to find statements that have slowed down. Counters only, never query text. The same migration makes Postgres log statements that take a second or longer, with their plan and without their parameter values |
 
 :::note
-This table groups migrations by feature area for orientation. For exact column definitions, read the numbered `.sql` files in `migrations/` — they're the only authoritative source.
+This table groups migrations by feature area for orientation. For exact column definitions, read the numbered `.sql` files in Cookie-Worker's `migrations/` — they're the only authoritative source.
 :::
 
 ## Read receipts and notifications: privacy by construction
@@ -70,7 +70,7 @@ Two features intentionally never expose mailbox content through the token they h
 
 ## Coordinating with Cookie-Worker
 
-Because `mail-app-ingest` and `data-enricher` depend on specific tables and columns, several migrations are ordered dependencies for a Worker deploy:
+Merging a migration to Cookie-Worker's `main` applies it. Deploying a Worker is a separate, manual step, so a migration and the Worker code that needs it can be merged together and still roll out in order. Because `mail-app-ingest` and `data-enricher` depend on specific tables and columns, several migrations are ordered dependencies for a Worker deploy:
 
 - Apply `0010` before deploying Cookie-Worker code that creates pending enrichment rows during inbound storage.
 - Apply `0029` before deploying Cookie-Worker code that reads `label_rules`, and `0068` before deploying the `cookie-web-labels` and `mail-app-ingest` Workers that read `label_rules.kind` and `prompt`.
@@ -78,4 +78,4 @@ Because `mail-app-ingest` and `data-enricher` depend on specific tables and colu
 - Apply `0052` before deploying send/follow-up code that reads `follow_up_at`.
 - Apply `0053` and `0054` before deploying Tasks project/item routes; apply `0057` before enabling task search synchronization.
 
-The general rule: **migrate Cookie-Web first, deploy the dependent Cookie-Worker change second.**
+The general rule: **apply the migration first, deploy the dependent Worker second, publish the web client last.**

@@ -75,5 +75,5 @@ Gmail and Todoist credentials are optional. `API_KEY` is required for authentica
 Render provisions `cookie-agents-api`, `cookie-agents-db`, and cron services that call `/sync/gmail`. Pushes to `main` auto-deploy the service. Its API key, Gmail OAuth credentials, and optional Todoist token live in a Render environment group.
 
 :::note
-Cookie-Agents' PostgreSQL tables (`source_objects`, `email_threads`, and `emails`) are unrelated to the [Cookie mail data model](/data-model). Changes here do not require Cookie-Web migrations or Cookie-Worker coordination.
+Cookie-Agents' PostgreSQL tables (`source_objects`, `email_threads`, and `emails`) are unrelated to the [Cookie mail data model](/data-model). Changes here do not require Cookie-Worker migrations or coordination.
 :::
