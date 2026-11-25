@@ -96,6 +96,16 @@ Those Workers run with or without the migration. In the short time between Verce
 
 To check it after the rollout, send a message from the composer with one address on Cc and another on Bcc. Each should receive it, the Cc recipient should see the Cc line and no Bcc, and the Sent copy's `recipients` should hold all three lines.
 
+### Subscriptions
+
+Roll out in the usual order: merge Cookie-Web (migration `0115` runs from `main` and Vercel publishes the client with the Subscriptions sidebar item), then deploy `cookie-web-messages` from Cookie-Worker. Until the Worker is deployed, Subscriptions shows **Could not load your subscriptions** with a **Try again** button; nothing else is affected.
+
+The Worker runs with or without the migration, so the reverse order is also safe. Without the table it lists every sender as not unsubscribed and logs `unsubscribe_record_failed` when an unsubscribe cannot be recorded; without the index the list is correct but slow.
+
+The migration builds `messages_list_unsubscribe_idx` inside its transaction, which reads the headers of every message once (about a second for 5,000 messages) while holding a lock that blocks writes to `messages`. On a much larger mailbox, build the index by hand first with `CREATE INDEX CONCURRENTLY`, as `migrations/README.md` in Cookie-Web describes.
+
+To check it after the rollout, open Subscriptions, confirm the senders listed match the newsletters in the mailbox, unsubscribe from one, and reload: the row should still read **Unsubscribed** with today's date.
+
 ### September review fixes
 
 Deploy `cookie-web-send` with follow-up support **before** the Cookie-Web compatibility adapter. Apply Cookie-Web migration `0065_task_subtree_projects.sql` to repair children left in old projects and index parent lookups. The updated tasks Worker moves each complete subtree in a transaction and serializes structural changes per owner. Deploy it promptly with the repair so older handlers cannot recreate the inconsistency.

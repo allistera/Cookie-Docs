@@ -61,7 +61,7 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 | Origin / Worker | Routes used by the web app |
 | --- | --- |
 | `emails-api` / `cookie-web-emails` | `GET /emails`, `GET /emails/state`, `GET/PUT /emails/compose-preferences`, `GET/PUT /emails/out-of-office` |
-| `messages-api` / `cookie-web-messages` | message read/state/unsubscribe, bodies, attachments, contacts |
+| `messages-api` / `cookie-web-messages` | message read/state/unsubscribe, bodies, attachments, contacts, `GET /messages/subscriptions` |
 | `labels-api` / `cookie-web-labels` | label and label-rule CRUD |
 | `ai-api` / `cookie-web-ai` | `POST /compose`, `POST /summarize` |
 | `calendar-api` / `cookie-web-calendar` | calendar/event CRUD, subscriptions, sync, AI interpretation, and `POST /calendar-availability` |
@@ -217,6 +217,54 @@ Worker change of its own. The label list is newest first, so **Load more** only
 appears while the oldest loaded row is itself from today. Newsletters is an
 ordinary label, applied by hand, by a rule or by AI auto-tagging, and still has
 its own entry in the sidebar's Labels section listing every day's mail as rows.
+
+## Subscriptions
+
+**Subscriptions** sits under The Feed in the Email sidebar and lists, in one
+place, every sender whose mail offers a way to unsubscribe: newsletters,
+mailing lists, marketing and product updates. Each sender is one row with its
+name and address, how many of its emails are in the mailbox, and the date of
+the newest one. The list is ordered by that date, so the senders still writing
+to you are at the top.
+
+**Unsubscribe** on a row asks that sender to stop, without opening any of its
+mail. It is the same action as **Unsubscribe from sender** in the reader, and
+works through the sender's newest email:
+
+1. a one-click request to the sender, when it supports one;
+2. otherwise an unsubscribe email sent from your address;
+3. otherwise the AI tier works through the sender's unsubscribe page, which
+   can take up to three minutes. The button reads **Unsubscribing…** meanwhile,
+   and other senders can be unsubscribed from at the same time, up to ten a
+   minute.
+
+When the sender confirms, the row turns grey and reads **Unsubscribed** with
+the date. That is remembered, so the row still says so on the next visit and
+on other devices, whether the unsubscribe was started here or in the reader.
+When a sender cannot be unsubscribed from automatically (its page wants a
+login or a CAPTCHA, for instance), the button becomes **Open unsubscribe
+page**, a link to the sender's own page to finish there. Cookie cannot tell
+whether that was completed, so such a row stays as it was.
+
+Unsubscribing changes nothing about the mail already received: it is not
+marked Done, moved or deleted. Senders are allowed some days to act on a
+request, so mail can still arrive for a while. A row whose sender has written
+again since reads **Unsubscribed** with the date and **still sending**, and
+offers **Unsubscribe** again.
+
+A sender is detected from the `List-Unsubscribe` header its mail carries,
+which bulk senders are required to include. Nothing is decided by AI, and
+mail that arrived before this feature existed counts too. Left out are
+senders whose only unsubscribe link is in the body of the email, mail in
+Trash and Spam, mail you sent, and senders that are blocked or still waiting
+under New senders. Senders are told apart by address, so a company that
+writes from two addresses has two rows. The list holds the 1,000 senders with
+the most recent mail.
+
+Subscriptions is its own view at `/subscriptions`, fed by
+`GET /messages/subscriptions` on `cookie-web-messages`.
+[Cookie-Worker](/components/cookie-worker#subscriptions) documents the API
+side, and [Operations](/operations#subscriptions) the order to deploy in.
 
 ## ntfy notifications
 

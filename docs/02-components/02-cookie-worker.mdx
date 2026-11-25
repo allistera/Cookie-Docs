@@ -15,7 +15,7 @@ Eleven Workers serve Cookie's browser APIs on custom domains, cookie-mcp serves 
 | `cookie-web-calendar` | HTTP | `/calendar-events`, `/calendars`, and `POST /calendar-availability`, including recurrence, ICS sync, fresh availability reads, and natural-language event drafts |
 | `cookie-web-emails` | HTTP | keyset-paginated `/emails` lists, `/emails/state` bootstrap, composer preferences, and out-of-office settings |
 | `cookie-web-labels` | HTTP | label and label-rule CRUD |
-| `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, contacts, and calendar invitation state |
+| `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, contacts, calendar invitation state, and the list of subscriptions |
 | `cookie-web-notifications` | HTTP + cron | `/notification-event` claim/ack lease for browser notifications; `/ntfy` settings (per-user server, topic and encrypted access token) and the every-minute publish of queued new-mail alerts to each user's ntfy server |
 | `cookie-web-receipts` | HTTP + email clients | authenticated receipt status plus an unauthenticated, flood-guarded tracking pixel |
 | `cookie-web-search` | HTTP | Meilisearch mail/federated search, saved mail views, and mailbox Q&A |
@@ -406,6 +406,31 @@ Without the `FILES` binding the upload route answers `503`, so a Worker deployed
 ## AI-assisted unsubscribe
 
 `cookie-web-messages` handles standards-based one-click and `mailto:` unsubscribe first. When a sender offers only a web page, an optional AI tier can inspect the untrusted page, propose one bounded form submission, and verify the result. URL, redirect, form, size, timeout, and public-address checks constrain the model; login, CAPTCHA, JavaScript-only, or ambiguous flows fail closed.
+
+## Subscriptions
+
+`GET /messages/subscriptions` on `cookie-web-messages` returns the senders the mailbox is subscribed to, newest mail first, for Cookie-Web's Subscriptions view:
+
+```json
+{
+  "subscriptions": [
+    {
+      "address": "news@example.com",
+      "name": "Example News",
+      "messageId": "…",
+      "messageCount": 12,
+      "lastReceivedAt": "2026-11-20T08:00:00.000Z",
+      "unsubscribedAt": null
+    }
+  ]
+}
+```
+
+A sender is one lower-cased `from_address` with at least one received message whose headers include `List-Unsubscribe`. Trash, sent mail, confirmed spam and mail that is held or blocked by sender screening are not counted. `messageId` is the sender's newest such message, the one the client names in `POST /messages` with `action: unsubscribe`. A sender is left out when that message offers nothing the action could use (no valid `mailto:` target and no public HTTPS link), so every listed sender can be acted on. The response is capped at 1,000 senders and never includes the sender-controlled headers themselves.
+
+The query reads only the partial index `messages_list_unsubscribe_idx` (Cookie-Web migration `0115`) to find list mail, then the headers of one message per sender. The index predicate is repeated word for word in `subscriptions.js`; the two must change together, or the planner stops using the index and the query goes back to reading every message's headers (about 1.2 s on a 5,000-message mailbox, against a few milliseconds).
+
+A confirmed unsubscribe (`status: unsubscribed` from the one-click, `mailto:` or AI tier) is recorded in `sender_unsubscribes` against the sender's address, and returned as `unsubscribedAt`. A `manual` or `ai_failed` outcome records nothing, because the Worker cannot know whether the person finished on the sender's page. Recording is best effort: if the write fails, the unsubscribe still succeeds and `unsubscribe_record_failed` is logged.
 
 ## data-enricher
 
