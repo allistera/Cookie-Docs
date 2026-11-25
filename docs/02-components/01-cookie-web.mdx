@@ -167,6 +167,27 @@ address, even if its envelope sender differs. A browser alert or provider reques
 already handed off cannot be recalled. Blocking does not unsubscribe, reject
 inbound delivery, change original forwarding, or restrict manual replies/sends.
 
+## Tracking images
+
+Senders put tracking images (open pixels) in mail so that the request for the
+image tells them when the message was opened. Keeping remote images behind
+**Show images** stops that for ordinary mail, but Important mail and mail from
+accepted senders load their images at once, and pressing the button loads them
+all. The reader therefore takes tracking images out of the message before it
+is rendered, whatever the image rule says, and shows a notice above the message
+saying how many it blocked. The Feed's posts do the same.
+
+An image counts as a tracker when it is remote (an embedded or `cid:` image
+makes no request) and either every size the sender declared for it is at most
+one pixel (the `width` and `height` attributes, or inline `width`, `height`,
+`max-width` and `max-height`), or its address uses one of the open-tracking
+paths of the common mail platforms, for pixels that declare no size. A spacer
+one pixel wide and twenty tall, an image with a percentage width, and a hidden
+image a template shows again from a media query are all kept. The detection
+runs in the browser on the sanitized body (`src/lib/trackingImages.js`); nothing
+is stored, so an email whose only remote image was a tracker simply opens
+without a **Show images** prompt.
+
 ## Paper Trail
 
 **Paper Trail** sits under AI Today in the Email sidebar and lists receipts,
