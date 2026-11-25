@@ -105,6 +105,8 @@ The `message_ai` row records `pending`, `completed`, or `failed` state. Every 15
 
 Recovery never re-forwards a message and never changes the fact that it was delivered. It only repairs the optional AI layer.
 
+One failure is expected and is left to recovery on purpose. OpenAI answers `403 unsupported_country_region_territory` when the email being handled was delivered by a mail server in a region it does not serve, such as Hong Kong or mainland China, wherever the Worker itself runs. Every attempt made while handling that email is refused, so the email handler tries once, logs `ai_enrichment_deferred` and reports nothing to Sentry. The recovery pass is not triggered by any sender and classifies the message on its next run, up to about 15 minutes later. The same refusal met during recovery is reported as an error.
+
 ### 5. User controls and current limits
 
 In **Settings → Labels**, the user can enable or disable Auto-tag independently for each user label. Descriptions help the classifier distinguish similarly named labels, while manual labels and deterministic rules remain available when Auto-tag is disabled.
