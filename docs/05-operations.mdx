@@ -104,7 +104,7 @@ The Worker runs with or without the migration, so the reverse order is also safe
 
 The migration builds `messages_list_unsubscribe_idx` inside its transaction, which reads the headers of every message once (about a second for 5,000 messages) while holding a lock that blocks writes to `messages`. On a much larger mailbox, build the index by hand first with `CREATE INDEX CONCURRENTLY`, as `migrations/README.md` in Cookie-Worker describes.
 
-To check it after the rollout, open Subscriptions, confirm the senders listed match the newsletters in the mailbox, unsubscribe from one, and reload: the row should still read **Unsubscribed** with today's date.
+To check it after the rollout, open Subscriptions, confirm the senders listed match the newsletters in the mailbox, unsubscribe from one, and reload: that sender should no longer be listed.
 
 ### September review fixes
 

@@ -428,7 +428,7 @@ A sender is one lower-cased `from_address` with at least one received message wh
 
 The query reads only the partial index `messages_list_unsubscribe_idx` (migration `0115`) to find list mail, then the headers of one message per sender. The index predicate is repeated word for word in `subscriptions.js`; the two must change together, or the planner stops using the index and the query goes back to reading every message's headers (about 1.2 s on a 5,000-message mailbox, against a few milliseconds).
 
-A confirmed unsubscribe (`status: unsubscribed` from the one-click, `mailto:` or AI tier) is recorded in `sender_unsubscribes` against the sender's address, and returned as `unsubscribedAt`. A `manual` or `ai_failed` outcome records nothing, because the Worker cannot know whether the person finished on the sender's page. Recording is best effort: if the write fails, the unsubscribe still succeeds and `unsubscribe_record_failed` is logged.
+A confirmed unsubscribe (`status: unsubscribed` from the one-click, `mailto:` or AI tier) is recorded in `sender_unsubscribes` against the sender's address, and returned as `unsubscribedAt`; the client leaves such a sender out of its list unless `lastReceivedAt` is later, meaning the sender is still writing. A `manual` or `ai_failed` outcome records nothing, because the Worker cannot know whether the person finished on the sender's page. Recording is best effort: if the write fails, the unsubscribe still succeeds and `unsubscribe_record_failed` is logged.
 
 ## data-enricher
 
