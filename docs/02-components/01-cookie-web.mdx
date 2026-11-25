@@ -33,7 +33,6 @@ Cookie-Web is Cookie's browser client and the owner of the [shared Supabase sche
 - api/
   - send.js — legacy Vercel send/schedule/follow-up compatibility route
   - _fixtures/ and _lib/ — local-development and send-route support
-- migrations/ — append-only SQL shared with Cookie-Worker
 - e2e/ — Playwright end-to-end tests and Worker fixtures
 
 </FileTree>
@@ -453,7 +452,7 @@ npm run test:e2e
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Supabase Postgres connection for migrations and local fixture tooling |
+| `DATABASE_URL` | Supabase Postgres connection for the health check and local tooling |
 | `VITE_AUTH0_DOMAIN` / `VITE_AUTH0_CLIENT_ID` / `VITE_AUTH0_AUDIENCE` | Browser Auth0 configuration |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Content-free Realtime inbox pings |
 
@@ -461,4 +460,4 @@ The `/api/send` adapter forwards bearer-authenticated requests to the fixed send
 
 The Worker API origins are public constants in `src/lib/apiWorkers.js`, not environment secrets.
 
-Pushes to `main` run format, lint, unit, build, and Chromium end-to-end jobs. Vercel deploys the SPA automatically; migration changes also trigger the `Migrate Database` workflow.
+Pushes to `main` run format, lint, unit, build, and Chromium end-to-end jobs. Vercel deploys the SPA automatically. The schema's migrations live in Cookie-Worker and are applied from there; see the [data model](/data-model).

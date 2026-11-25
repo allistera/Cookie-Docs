@@ -40,7 +40,7 @@
           "crons",
           "db"
         ],
-        "note": "The runtimes share Cookie-Web's Postgres schema plus two narrow Worker service bindings."
+        "note": "The runtimes share Cookie-Worker's Postgres schema plus two narrow Worker service bindings."
       }
     ]
   },
@@ -152,7 +152,7 @@
       "id": "db",
       "type": "database",
       "label": "Supabase Postgres",
-      "sublabel": "schema owned by Cookie-Web",
+      "sublabel": "schema owned by Cookie-Worker",
       "brand": "supabase",
       "pos": [
         940,
@@ -251,8 +251,8 @@
       "dot": "cyan",
       "title": "Ownership",
       "items": [
-        "Cookie-Web owns the schema and Vercel SPA",
-        "Cookie-Worker owns ten API and three background Workers",
+        "Cookie-Web owns the Vercel SPA",
+        "Cookie-Worker owns the schema, ten API and three background Workers",
         "Cookie-iOS is a client with no server-side state"
       ]
     },

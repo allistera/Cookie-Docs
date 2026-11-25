@@ -9,8 +9,8 @@ Each repository owns its validation and deployment surface. Cookie-Web and Cooki
 
 | Repository | Automated checks | Deployment |
 | --- | --- | --- |
-| Cookie-Web | Format, Oxlint/ESLint, unit tests, production build, Chromium and Firefox Playwright | Vercel deploys pushes to `main`; migration changes also run `migrate.yml` |
-| Cookie-Worker | Format, lint, generated-type check, repository typecheck, unit tests, `dry-run --all` | Manual `Deploy` workflow; default `all` publishes all thirteen sequentially, or one Worker can be selected |
+| Cookie-Web | Format, Oxlint/ESLint, unit tests, production build, Chromium and Firefox Playwright | Vercel deploys pushes to `main` |
+| Cookie-Worker | Format, lint, generated-type check, repository typecheck, unit tests (including the migration suites on PostgreSQL), `dry-run --all` | Manual `Deploy` workflow; default `all` publishes all thirteen sequentially, or one Worker can be selected. Migration changes on `main` run `migrate.yml` |
 | Cookie-iOS | SwiftLint, XcodeGen project generation and the unit-test bundle on an iPhone Simulator | Main runs archive/sign and upload to TestFlight after lint and native tests pass |
 | Cookie-Agents | Ruff, Pytest, and Docker image build | Render Blueprint auto-deploys the API on `main`; separate workflow publishes static API docs |
 | Cookie-Docs | Format and production build | GitHub Pages workflow deploys `dist/` from `main` |
@@ -65,7 +65,7 @@ Cookie-Worker deploy validation always checks the whole repository before publis
 
 ## Deploying Worker and schema changes
 
-1. Apply any Cookie-Web migration first. Runtime code must tolerate the old schema until the migration is present.
+1. Apply any migration first: merge it to Cookie-Worker's `main` and wait for `Migrate Database` to succeed. Runtime code must tolerate the old schema until the migration is present.
 2. Run the Cookie-Worker validation suite and a selected-worker dry-run.
 3. Dispatch `Deploy` with `all` or the exact directory name under `workers/`.
 4. Verify the changed path in production. For inbound mail, confirm forwarding, durable storage, classification, and indexing; for browser APIs, confirm Auth0, CORS, and the custom domain; for service bindings, verify both caller and target logs.
@@ -75,7 +75,7 @@ Cookie-Worker's `RUNBOOK.md` contains the detailed production, search-repair, ro
 
 ### Calendar invitations
 
-Roll out in this order: merge Cookie-Web (migration `0113` runs from `main`), deploy `cookie-web-messages` and `cookie-web-send`, then let Vercel publish the web client. Before the migration the messages Worker logs `calendar_invitation_sync_failed` and returns no invitation, so the reader keeps its **Add to calendar** offer; nothing fails.
+Roll out in this order: apply migration `0113`, deploy `cookie-web-messages` and `cookie-web-send`, then let Vercel publish the web client. Before the migration the messages Worker logs `calendar_invitation_sync_failed` and returns no invitation, so the reader keeps its **Add to calendar** offer; nothing fails.
 
 The automated tests run the whole flow on PostgreSQL with a stand-in for the mail provider. Whether an organiser's calendar accepts the reply can only be seen with real mailboxes, so check it once after the first deploy, and again after any change to the reply's content:
 
@@ -90,25 +90,25 @@ If the organiser gets the mail but their calendar does not move, compare the rec
 
 ### Cc and Bcc
 
-Roll out in this order: deploy `cookie-web-send` and `cookie-web-drafts` from Cookie-Worker, then merge Cookie-Web (migration `0114` runs from `main` and Vercel publishes the client that offers the two lines). The Workers come first here because a Worker that predates the change ignores `cc` and `bcc`: a message sent through it would go out without the people copied on it, and nothing would say so.
+Roll out in this order: deploy `cookie-web-send` and `cookie-web-drafts` from Cookie-Worker, apply migration `0114`, then let Vercel publish the client that offers the two lines. The Workers come first here because a Worker that predates the change ignores `cc` and `bcc`: a message sent through it would go out without the people copied on it, and nothing would say so.
 
-Those Workers run with or without the migration. In the short time between Vercel publishing the client and the migration finishing, a draft or a Send Later that has a Cc or Bcc line fails to save and says so; an immediate send is unaffected.
+Those Workers run with or without the migration. If the client is published before the migration has been applied, a draft or a Send Later that has a Cc or Bcc line fails to save and says so; an immediate send is unaffected.
 
 To check it after the rollout, send a message from the composer with one address on Cc and another on Bcc. Each should receive it, the Cc recipient should see the Cc line and no Bcc, and the Sent copy's `recipients` should hold all three lines.
 
 ### Subscriptions
 
-Roll out in the usual order: merge Cookie-Web (migration `0115` runs from `main` and Vercel publishes the client with the Subscriptions sidebar item), then deploy `cookie-web-messages` from Cookie-Worker. Until the Worker is deployed, Subscriptions shows **Could not load your subscriptions** with a **Try again** button; nothing else is affected.
+Roll out in the usual order: apply migration `0115`, deploy `cookie-web-messages` from Cookie-Worker, then let Vercel publish the client with the Subscriptions sidebar item. If the client is published before the Worker is deployed, Subscriptions shows **Could not load your subscriptions** with a **Try again** button until it is; nothing else is affected.
 
 The Worker runs with or without the migration, so the reverse order is also safe. Without the table it lists every sender as not unsubscribed and logs `unsubscribe_record_failed` when an unsubscribe cannot be recorded; without the index the list is correct but slow.
 
-The migration builds `messages_list_unsubscribe_idx` inside its transaction, which reads the headers of every message once (about a second for 5,000 messages) while holding a lock that blocks writes to `messages`. On a much larger mailbox, build the index by hand first with `CREATE INDEX CONCURRENTLY`, as `migrations/README.md` in Cookie-Web describes.
+The migration builds `messages_list_unsubscribe_idx` inside its transaction, which reads the headers of every message once (about a second for 5,000 messages) while holding a lock that blocks writes to `messages`. On a much larger mailbox, build the index by hand first with `CREATE INDEX CONCURRENTLY`, as `migrations/README.md` in Cookie-Worker describes.
 
 To check it after the rollout, open Subscriptions, confirm the senders listed match the newsletters in the mailbox, unsubscribe from one, and reload: the row should still read **Unsubscribed** with today's date.
 
 ### September review fixes
 
-Deploy `cookie-web-send` with follow-up support **before** the Cookie-Web compatibility adapter. Apply Cookie-Web migration `0065_task_subtree_projects.sql` to repair children left in old projects and index parent lookups. The updated tasks Worker moves each complete subtree in a transaction and serializes structural changes per owner. Deploy it promptly with the repair so older handlers cannot recreate the inconsistency.
+Deploy `cookie-web-send` with follow-up support **before** the Cookie-Web compatibility adapter. Apply migration `0065_task_subtree_projects.sql` to repair children left in old projects and index parent lookups. The updated tasks Worker moves each complete subtree in a transaction and serializes structural changes per owner. Deploy it promptly with the repair so older handlers cannot recreate the inconsistency.
 
 Run the search drift repair after deploying the indexing changes; older incorrectly stamped rows may require a one-time full reindex. Calendar schema fallbacks remain supported until every deployment is verified beyond migrations 0024–0027. Removing those branches is conditional on that inventory, not on the presence of migration files in the repository.
 
@@ -131,7 +131,7 @@ Two cross-Worker pairs must agree:
 
 `cookie-web-tasks` also binds the private R2 bucket `cookie-files` as `FILES` for files uploaded to Documents. Create it once with `wrangler r2 bucket create cookie-files`; the bucket is never made public, and bytes are served only through the Worker's `/files/:id/content` route.
 
-Vercel holds Cookie-Web's browser build and migration settings; the compatibility send adapter forwards delivery to the Worker. Composer attachment uploads go from the browser to `cookie-web-send` directly, so Vercel needs no Blob storage or database settings for them. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
+Vercel holds Cookie-Web's browser build settings; the compatibility send adapter forwards delivery to the Worker. Composer attachment uploads go from the browser to `cookie-web-send` directly, so Vercel needs no Blob storage or database settings for them. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
 
 ## Local-development safety
 
@@ -139,8 +139,8 @@ Never point routine Cookie-Web or Cookie-Worker development at the production Su
 
 ## Review remediation rollout
 
-The October 2026 remediation introduces three additive migrations owned by
-Cookie-Web: 0102 binds Google authorization completion to its original browser
+The October 2026 remediation introduces three additive migrations:
+0102 binds Google authorization completion to its original browser
 and account; 0103 records object deletion jobs and document-image references;
 0104 journals outbound delivery attempts and sent-copy reconciliation.
 Apply these through the normal reviewed migration process before deploying the

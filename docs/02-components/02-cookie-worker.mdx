@@ -150,7 +150,7 @@ transaction. This serializes suppression with dispatch without putting provider
 latency on new-mail ingestion; a successful block cannot retract a provider
 request already underway.
 
-Release the migration-only Web parent first and await **Migrate Database** success,
+Merge the migration first and await **Migrate Database** success,
 then deploy the compatible ingest and updated emails/send Workers, then the Web
 settings and Docs. Accounts remain disabled throughout rollout. Use GitHub Actions
 for unit/E2E verification; migration execution and any controlled delivery checks
@@ -181,7 +181,7 @@ wildcards matched literally) and pages with the same cursor;
 `address=<address>` reads the one decision that applies to that sender (its own
 row, else the most specific `@domain` row). Decision keys are either an exact
 address or `@domain`, which covers that domain and its subdomains; the database
-resolves them with `effective_sender_decision` (Cookie-Web migration 0089), used
+resolves them with `effective_sender_decision` (migration 0089), used
 by the arrival trigger and the notification Workers. `PUT /emails/senders` takes
 an `action`: `settings` with boolean `enabled`; `block`, `accept`, `unblock` or
 `forget` with an `address` (an email address or a bare domain); or `restore` with
@@ -232,11 +232,9 @@ again before every publish/retry. The responder reads persisted suppression at
 enqueue, claim and dispatch. An already-handed-off alert or provider request
 cannot be retracted.
 
-Release order: publish the completed Web head to `cookie-feature/sender-screening`
-and await its full CI, including the mandatory PostgreSQL tests. The CI push
-filter permits only `main` and `cookie-feature/**`; the production migration
-workflow is unchanged. Then publish the migration-only Web parent to `main`
-and await **Migrate Database**;
+Release order: await full CI on the Web and Worker branches, including the
+mandatory PostgreSQL migration tests in Cookie-Worker. Then merge the migration
+to Cookie-Worker's `main` and await **Migrate Database**;
 deploy `mail-app-ingest`, `cookie-web-notifications`, `cookie-web-send`,
 `cookie-web-messages`, `cookie-web-search`, `cookie-web-ai`, `cookie-web-tasks`,
 `data-enricher`, then `cookie-web-emails` last; then publish the Web interface and Docs.
@@ -247,7 +245,7 @@ throughout the staged rollout. Existing rows and ordinary new arrivals remain
 allowed during that interval. Deploying the decision API last ensures all read,
 retention and delivery guards are active before it can create held mail.
 
-The Web Checks CI job supplies an isolated PostgreSQL 17 service named
+Cookie-Worker's `Lint and Test` job supplies an isolated PostgreSQL 17 service named
 `cookie_screening_test`. Its migration regression file refuses non-loopback or
 other database names and fails CI if the test connection is missing. It applies
 the actual `0080`, `0082` and `0088` SQL above a small synthetic pre-0080 schema
@@ -358,7 +356,7 @@ Meilisearch owns keyword/semantic ranking for three indexes: `messages`, `docume
 
 ## Task ordering (`cookie-web-tasks`)
 
-`GET /task-items` lists a project, the Inbox or a label by `position` (Cookie-Web migration `0062`), then `created_at`; Today by `due_date`, then `today_position` (`0063`, `NULL` last), then `position`; and a saved filter by due date with undated rows last, then `position`. `POST /task-items/reorder` saves a drag or keyboard move as the rows in their new order rather than a midpoint between neighbours, so a move is one statement and never runs out of precision; the response lists the rows that changed with their new value.
+`GET /task-items` lists a project, the Inbox or a label by `position` (migration `0062`), then `created_at`; Today by `due_date`, then `today_position` (`0063`, `NULL` last), then `position`; and a saved filter by due date with undated rows last, then `position`. `POST /task-items/reorder` saves a drag or keyboard move as the rows in their new order rather than a midpoint between neighbours, so a move is one statement and never runs out of precision; the response lists the rows that changed with their new value.
 
 | Body | Behaviour |
 | --- | --- |
@@ -376,7 +374,7 @@ A run (`src/todoistSync.js`) reads projects, sections, open tasks and recent com
 
 ## Task comments and attachments (`cookie-web-tasks`)
 
-A task's discussion thread lives in `task_comments` (Cookie-Web migration `0096`) and is served under `/task-comments`. Attachment bytes go to the same private R2 bucket as uploads (`cookie-files`, binding `FILES`) under `<user_id>/<uuid>`, with the same 25 MB cap, type sniffing and 60-per-minute rate limit; the row is the source of truth and bytes only ever leave through the attachment route after an ownership check.
+A task's discussion thread lives in `task_comments` (migration `0096`) and is served under `/task-comments`. Attachment bytes go to the same private R2 bucket as uploads (`cookie-files`, binding `FILES`) under `<user_id>/<uuid>`, with the same 25 MB cap, type sniffing and 60-per-minute rate limit; the row is the source of truth and bytes only ever leave through the attachment route after an ownership check.
 
 | Route | Behaviour |
 | --- | --- |
@@ -428,7 +426,7 @@ Without the `FILES` binding the upload route answers `503`, so a Worker deployed
 
 A sender is one lower-cased `from_address` with at least one received message whose headers include `List-Unsubscribe`. Trash, sent mail, confirmed spam and mail that is held or blocked by sender screening are not counted. `messageId` is the sender's newest such message, the one the client names in `POST /messages` with `action: unsubscribe`. A sender is left out when that message offers nothing the action could use (no valid `mailto:` target and no public HTTPS link), so every listed sender can be acted on. The response is capped at 1,000 senders and never includes the sender-controlled headers themselves.
 
-The query reads only the partial index `messages_list_unsubscribe_idx` (Cookie-Web migration `0115`) to find list mail, then the headers of one message per sender. The index predicate is repeated word for word in `subscriptions.js`; the two must change together, or the planner stops using the index and the query goes back to reading every message's headers (about 1.2 s on a 5,000-message mailbox, against a few milliseconds).
+The query reads only the partial index `messages_list_unsubscribe_idx` (migration `0115`) to find list mail, then the headers of one message per sender. The index predicate is repeated word for word in `subscriptions.js`; the two must change together, or the planner stops using the index and the query goes back to reading every message's headers (about 1.2 s on a 5,000-message mailbox, against a few milliseconds).
 
 A confirmed unsubscribe (`status: unsubscribed` from the one-click, `mailto:` or AI tier) is recorded in `sender_unsubscribes` against the sender's address, and returned as `unsubscribedAt`. A `manual` or `ai_failed` outcome records nothing, because the Worker cannot know whether the person finished on the sender's page. Recording is best effort: if the write fails, the unsubscribe still succeeds and `unsubscribe_record_failed` is logged.
 
@@ -487,6 +485,10 @@ npm run dry-run -- --all
 ```
 
 `dev:all` starts every config in one Wrangler session so service bindings work locally. Production deploys accept `all` or one Worker name; each selected Worker is dry-run again before publish.
+
+## Database migrations
+
+The shared schema's append-only SQL migrations live in this repository under `migrations/`, with their runner `migrations/migrate.sh`. The `Migrate Database` workflow applies pending files when they reach `main`; a Worker deploy stays a separate, manual step, so merge the migration, wait for that workflow, then deploy the Workers that need it. Conventions and the schema areas are on the [data model](/data-model) page.
 
 ## Configuration highlights
 
