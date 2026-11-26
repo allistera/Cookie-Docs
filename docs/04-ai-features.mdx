@@ -38,6 +38,8 @@ Every model is an OpenAI model called with the one `OPENAI_API_KEY` each Worker 
 
 The assistant chat is the one feature still on an older model, and it has a deadline: OpenAI removes `gpt-4o-mini` on 2027-01-14. The chat runs inside Meilisearch, which calls OpenAI's Chat Completions API with a search tool. The GPT-5.6 and GPT-6 models accept tools there only with `reasoning_effort` set to `none`, and Meilisearch (checked through 1.56.2) rejects that value before the request leaves it, so each of those models fails with "Function tools with reasoning_effort are not supported". Before the deadline, either upgrade to a Meilisearch release that forwards `none` and set the default to `gpt-6-luna`, or set `OPENAI_CHAT_MODEL` to `gpt-5.4-mini` (0.75 / 4.50), the newest model that works there today.
 
+The short drafting calls (AI Compose, natural-language calendar drafts and task quick-add) set `reasoning.effort` to `none` on a reasoning model, and an AI Task plan sets it to `low`: reasoning tokens count against each call's small output allowance (500 to 700 tokens for compose and calendar drafts) and could otherwise use all of it and leave no draft.
+
 AI Today settings saved with a model that has since been retired (`gpt-5-nano`, `gpt-5.6-luna`, `gpt-4.1-nano`) read back as the default, so no data change is needed when the list moves on.
 
 ## What “AI Inbox” means
@@ -126,7 +128,7 @@ The **AI chat** button at the right of the header (beside the calendar button, o
 
 The boundary stays in the Worker. It verifies the Auth0 token, spends the shared AI quota (ten questions a minute per user, the same scope as the other AI routes), adds today's date for the model, and signs a five-minute Meilisearch tenant token whose search rules pin every index to `user_id = <owner>` (and mail to what search shows, not deleted). Meilisearch applies those rules to every search the model makes, so a filter the model writes can narrow a search but never reach another person's rows. The browser never holds a Meilisearch credential and never chooses the model. The workspace settings (the OpenAI model called through the same Cloudflare AI Gateway as the other Workers, the system prompt that treats everything inside mail, documents and tasks as untrusted text) live in the Worker and are pushed to Meilisearch by it. Setup and failure signals are in Cookie-Worker's RUNBOOK ("Assistant chat").
 
-`POST /ask` provides single-question mailbox Q&A on the same Worker for clients that use this endpoint: it retrieves owned mail from Meilisearch itself and asks the model to answer with cited messages. Cookie-Web does not call it.
+`POST /ask` provides single-question mailbox Q&A on the same Worker for clients that use this endpoint: it retrieves owned mail from Meilisearch itself and asks the model to answer with cited messages, as one JSON response (it does not stream, and `stream=1` is ignored). Cookie-Web does not call it.
 
 ## Reading-view summaries
 

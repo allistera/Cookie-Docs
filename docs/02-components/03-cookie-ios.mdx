@@ -25,7 +25,7 @@ Cookie-iOS is the native SwiftUI client for Cookie. Its authenticated shell swit
 ## Shipped screens
 
 - **Email** — paginated inbox, category filters, pull to refresh, debounced keyword type-ahead, explicit hybrid search, message detail, attachment/body loading, Done actions, and a full-screen composer.
-- **Reading** — sanitized HTML in a bounded web view; remote images are blocked by default and can be loaded explicitly. Reply opens the composer with the message context.
+- **Reading** — sanitized HTML in a bounded web view; remote images are blocked by default and can be loaded explicitly. Tracking images (remote images declared at most one pixel, or on a known open-tracking address) are removed before rendering whatever the image setting, as Cookie-Web does. Reply opens the composer with the message context.
 - **Compose** — contact suggestions, rich-text body, new mail/reply sending, and explicit success feedback.
 - **Calendar** — lists calendars/events and turns natural-language text into a reviewable event draft before creating it.
 - **Notes** — hierarchical document/folder browser and block-aware editor for supported rich-text rows; unsupported table/image/Kanban/Excalidraw blocks remain identifiable rather than being silently discarded.
@@ -43,11 +43,11 @@ Cookie-iOS is the native SwiftUI client for Cookie. Its authenticated shell swit
 
 All production URLs live in `CookieAPIEndpoints.swift`, and a contract test pins every origin and clean route path so future backend migrations cannot leave one client on a legacy endpoint unnoticed.
 
-Auth0 access tokens use the same Cookie API audience as the web app. Focused unit tests keep response contracts independently testable.
+Auth0 access tokens use the same Cookie API audience as the web app. Requests go through an ephemeral `URLSession` with no response cache, so mail JSON is not kept on disk or in memory after a sign-out. Focused unit tests keep response contracts independently testable. Recipients decode from `{ name, address }` objects or plain address strings, and a malformed recipient list leaves that row unlabelled instead of failing the page.
 
 ## Inbox and note persistence
 
-The inbox keeps the server's pagination cursor, appends unique messages as more rows are requested, and discards responses superseded by a refresh. Loading another page requires a user action. Filters use the backend category names from loaded messages, including custom categories; mail without a category appears as Uncategorised. Selecting an empty category does not automatically scan the remaining mailbox.
+The inbox keeps the server's pagination cursor, appends unique messages as more rows are requested, and discards responses superseded by a refresh. Loading another page requires a user action. Filters use the backend category names from loaded messages, including custom categories; mail without a category appears as Uncategorised. Selecting an empty category does not automatically scan the remaining mailbox. When an email cited by AI Today is not in the loaded rows or its own thread, the app looks for its details in at most three pages each of the inbox and New senders before opening it.
 
 Notes use one save coordinator for autosave, Retry, and the Notes back button. It retains the newest full draft after failures and waits for earlier writes before using their returned version. A failed save keeps the editor open; conflicts can be saved as a separate copy. Pending drafts are kept in memory, so they do not survive process termination.
 
