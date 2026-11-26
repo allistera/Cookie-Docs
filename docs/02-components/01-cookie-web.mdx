@@ -62,7 +62,7 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 | `emails-api` / `cookie-web-emails` | `GET /emails`, `GET /emails/state`, `GET/PUT /emails/compose-preferences`, `GET/PUT /emails/out-of-office` |
 | `messages-api` / `cookie-web-messages` | message read/state/unsubscribe, bodies, attachments, contacts, `GET /messages/subscriptions` |
 | `labels-api` / `cookie-web-labels` | label and label-rule CRUD |
-| `ai-api` / `cookie-web-ai` | `POST /compose`, `POST /summarize` |
+| `ai-api` / `cookie-web-ai` | `POST /compose`, `POST /compose-suggest`, `POST /summarize` |
 | `calendar-api` / `cookie-web-calendar` | calendar/event CRUD, subscriptions, sync, AI interpretation, and `POST /calendar-availability` |
 | `search-api` / `cookie-web-search` | `GET /search` for mail or federated scopes; `GET/PUT /saved-views`; `POST /ask` for mailbox Q&A |
 | `tasks-api` / `cookie-web-tasks` | AI Today, task projects/items/subtasks, documents, uploaded files (`/files`), preferences, and refresh |
@@ -341,6 +341,22 @@ When the organiser changes the event, the next email about it updates the same i
 Cookie sends mail as one address and can only answer for that address. An invitation sent to another of the person's addresses, such as the Gmail address their mail is forwarded from, is explained on the card and nothing is sent, since an answer from Cookie's address would not count for that guest; the plain **Add to calendar** offer stays for those. An invitation to a single date of a repeating event is answered on its own, and is added to the calendar only when the series is not already there. A repeating event with a pattern the calendar cannot express (every second week, the last Friday) is added as its first date only.
 
 The card is `src/components/InvitationCard.vue`, loaded as its own chunk when an invitation is open, with its wording in `src/lib/calendarInvitation.js`. It reads `calendar_invitation` from `GET /messages/calendar-invite` and answers through `POST /send/invitation-reply`; [Cookie-Worker](/components/cookie-worker) documents both.
+
+## Writing suggestions
+
+While you write a message, Cookie suggests the words most likely to come next. They appear in grey after the caret, followed by a small **Tab** marker.
+
+- **Tab** writes the suggestion into the message and leaves the caret after it. Clicking or tapping the grey words does the same. Undo takes it back out.
+- **Keep typing** to ignore it. If what you type matches the start of the suggestion, the rest stays on show; anything else puts it away and a new one is offered at the next pause.
+- **Escape** puts the suggestion away without closing the composer. Moving the caret, clicking elsewhere or leaving the editor also puts it away.
+
+A suggestion is offered after a pause of about 0.4 seconds, and only when the caret is at the end of a line with at least a few characters written, so nothing appears while you edit the middle of a sentence or type in a code block. It is offered in the compose window and in the reply box, where the email being answered is used as context. The signature and snippet editors in Settings never ask for suggestions. While the slash-command menu is open, the suggestion stays out of the way and Tab keeps its usual meaning; when no suggestion is on show, Tab moves to the next control as before.
+
+Suggested words are not part of the message until they are accepted: they are never saved in a draft and never sent.
+
+Settings → Signature → **Writing suggestions** switches the feature off. The choice is kept in that browser (`localStorage` key `cookie.smartCompose.off`), so it is set per device. While it is on, the text before the caret is sent to the AI model at each pause; see [AI features](/ai-features#writing-suggestions) for the request, its limits and its cost.
+
+The behaviour lives in `src/lib/smartCompose.js`, which `ComposerEditor.vue` loads as its own chunk when it is given a `smartCompose` prop (the subject, recipients and reply message), so the code stays out of the inbox view's bundle budget. The suggestion is an empty `<span class="composer-ghost">` placed after the caret whose words are drawn by CSS from its `data-suggestion` attribute. They are therefore never in the editor's text and cannot be selected or typed into, and the editor removes the span before it reads its own HTML, which is the one place a draft's content comes from. Tab inserts the words with the browser's `insertText` command so the insertion joins the undo history. A failed or refused request shows nothing and stops further requests for a minute. Session Replay masks the attribute, as it masks text.
 
 ## Cc and Bcc
 

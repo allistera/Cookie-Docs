@@ -11,7 +11,7 @@ Eleven Workers serve Cookie's browser APIs on custom domains, cookie-mcp serves 
 
 | Worker | Trigger | Purpose |
 | --- | --- | --- |
-| `cookie-web-ai` | HTTP | `POST /compose` and `/summarize`; shared durable AI quota |
+| `cookie-web-ai` | HTTP | `POST /compose` and `/summarize` on a shared durable AI quota; `POST /compose-suggest` (the composer's [writing suggestions](/ai-features#writing-suggestions)) on a quota of its own |
 | `cookie-web-calendar` | HTTP | `/calendar-events`, `/calendars`, and `POST /calendar-availability`, including recurrence, ICS sync, fresh availability reads, and natural-language event drafts |
 | `cookie-web-emails` | HTTP | keyset-paginated `/emails` lists, `/emails/state` bootstrap, composer preferences, and out-of-office settings |
 | `cookie-web-labels` | HTTP | label and label-rule CRUD |

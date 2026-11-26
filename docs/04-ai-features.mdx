@@ -13,6 +13,7 @@ Cookie's AI features are deliberately narrow: each one assists a specific, famil
 | Assistant chat (mail, documents & tasks) | `cookie-web-search` (Cookie-Worker) | Meilisearch conversational search, OpenAI chat model |
 | Mailbox Q&A (`POST /ask`, legacy) | `cookie-web-search` (Cookie-Worker) | OpenAI Responses API |
 | AI Compose | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
+| Writing suggestions in the composer | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API, no reasoning pass |
 | Document chat and editing | `cookie-web-ai` (Cookie-Worker) | GPT-6.1 Sol via OpenAI Responses API |
 | Reading-view summaries | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
 | Natural-language calendar drafts | `cookie-web-calendar` (Cookie-Worker) | OpenAI Responses API |
@@ -27,6 +28,7 @@ Every model is an OpenAI model called with the one `OPENAI_API_KEY` each Worker 
 | --- | --- | --- | --- |
 | Mail classification on arrival | `gpt-6-luna` | 0.10 / 0.50 | `AI_MODEL` on `mail-app-ingest` |
 | Compose, summaries, new documents, rule drafts | `gpt-6-luna` | 0.10 / 0.50 | `OPENAI_COMPOSE_MODEL`, `OPENAI_SUMMARY_MODEL`, `OPENAI_DOCUMENT_MODEL` |
+| Writing suggestions in the composer | `gpt-6-luna`, no reasoning pass | 0.10 / 0.50 | `OPENAI_COMPOSE_MODEL` |
 | Calendar and task drafts, unsubscribe assistance | `gpt-6-luna` | 0.10 / 0.50 | `OPENAI_CALENDAR_MODEL`, `OPENAI_UNSUBSCRIBE_MODEL` (task drafts have none) |
 | AI Today triage | `gpt-6-luna`, or `gpt-6.1-terra` (1 / 5) when chosen in Settings | 0.10 / 0.50 | Settings → AI Today |
 | Document chat | `gpt-6.1-sol` | 2 / 10 | `OPENAI_DOCUMENT_CHAT_MODEL` |
@@ -40,12 +42,13 @@ AI Today settings saved with a model that has since been retired (`gpt-5-nano`, 
 
 ## What “AI Inbox” means
 
-AI Inbox is Cookie's normal mailbox with assistance layered around it — not a second mailbox and not an autonomous email agent. New inbound mail is classified automatically; summaries, mailbox Q&A, and draft generation run only when the user asks for them. Nothing in the AI path replies, sends, or deletes mail by itself.
+AI Inbox is Cookie's normal mailbox with assistance layered around it — not a second mailbox and not an autonomous email agent. New inbound mail is classified automatically; summaries, mailbox Q&A, and draft generation run only when the user asks for them. Writing suggestions are the one feature that runs as the user works: while a message is being written, the composer asks for the likely next words at each pause, unless that is switched off in Settings. Nothing in the AI path replies, sends, or deletes mail by itself.
 
 | When | What runs | Result |
 | --- | --- | --- |
 | When mail arrives | Deterministic label rules, AI classification, spam scoring, and priority | Labels and Spam placement update; the message becomes available to search |
 | When the user asks | Search, the assistant chat, a thread summary, or AI Compose | A result or draft is returned to the authenticated client |
+| While the user writes a message | Writing suggestions | The likely next words are shown in grey after the caret; they join the message only if the user presses Tab |
 | Saved schedule or on refresh | AI Today triage | Recent-inbox triage is stored for AI Today; news and task extraction do not run |
 
 ## What happens when mail arrives
@@ -139,6 +142,20 @@ The resulting summary is saved to the selected message's `message_ai.summary` fi
 Generation never calls Resend. The user must explicitly review, edit, and send the draft through the normal send path — in both Cookie-Web and Cookie-iOS.
 :::
 
+## Writing suggestions
+
+While a message is being written in Cookie-Web, the composer and the reply box suggest the words most likely to come next, shown in grey after the caret with a small **Tab** marker. Pressing Tab (or clicking the grey words) writes them into the message; typing anything else ignores them. [Cookie-Web's writing suggestions section](/components/cookie-web#writing-suggestions) describes the behaviour in the editor.
+
+`POST /compose-suggest` on `cookie-web-ai` takes the message up to the caret (`text`, of which the last 1,500 characters are used) and, as optional context, the recipient line, the subject and an owned message ID for a reply. As with AI Compose, the original message of a reply is fetched server-side, only when it belongs to the caller and is not held by screening, and at most its first 2,000 characters are sent. The answer is `{ "suggestion": "…" }`: the exact characters to insert, on one line and at most 120 characters, or an empty string when the model has nothing likely to offer. The Worker removes a leading space where the text already ends in one and drops words the model repeated from the current line.
+
+Three things keep the feature quick and cheap:
+
+- **No reasoning pass.** The call sets `reasoning.effort` to `none` and times out after four seconds; a suggestion that arrives after the writer has moved on is thrown away.
+- **A quota of its own.** The composer asks at every typing pause, far more often than the click-driven AI routes, so the route claims its own rate-limit scope (`compose-suggest`, 30 requests a minute per user) and typing cannot use up the allowance that drafts and summaries share. Over the limit the Worker answers 429 and the composer stops asking for a minute.
+- **Small requests.** Estimated from the character limits above, a request is at most about 1,400 input tokens and 100 output tokens, under 0.0002 USD at `gpt-6-luna`'s rates, and usually a fraction of that. The quota therefore caps an hour of continuous typing at about 0.35 USD. This is the only AI cost that scales with typing, and it is zero when the feature is switched off (Settings → Signature → Writing suggestions).
+
+Nothing is stored: the suggestion is not saved, and it is not part of the draft unless accepted. The text before the caret does leave the browser for OpenAI at each pause while the feature is on, which is why the Settings switch says so.
+
 ## AI Today
 
 Read through `cookie-web-tasks`'s `GET /tasks`; only inbox triage is rebuilt by `data-enricher`:
@@ -197,7 +214,7 @@ Triage is a view, not a mailbox mutation. It never sends, archives, or deletes a
 ## Safety boundaries
 
 - **Forwarding first**: in `mail-app-ingest`, storage, classification, and monitoring failures never intentionally block mail delivery.
-- **Server-trusted context**: AI Compose and reply context are fetched server-side, never trusted from the client.
+- **Server-trusted context**: AI Compose and reply context are fetched server-side, never trusted from the client. Writing suggestions load reply context the same way.
 - **Constrained egress**: AI unsubscribe can submit only a validated form to a related public HTTPS host; arbitrary model-selected requests are rejected.
 - **Bounded automation**: AI never sends or deletes mail. Only a spam verdict at or above `0.98` changes folder placement automatically; each label's `auto_apply` setting independently controls whether AI may apply it.
 - **Rate limits**: `0039_api_rate_limits.sql` gives AI and enricher requests durable, per-user Postgres counters shared across serverless instances — see [Data model](/data-model#rate-limits).
