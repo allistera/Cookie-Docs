@@ -171,7 +171,7 @@ flowchart TB
     Workers --> Services
 ```
 
-Both halves verify the token the same way: the verified Auth0 issuer + immutable `sub` bind to `users.auth0_sub`, and token email claims never select a mailbox. The difference is only that the Workers are a cross-origin hop, so they also run a CORS allowlist and Cookie-Web's CSP must permit `https://*.infinitywave.online` in `connect-src`. See [Cookie-Web](/components/cookie-web) and [Cookie-Worker → Cookie Web API Workers](/components/cookie-worker#cookie-web-api-workers).
+Both halves verify the token the same way: the verified Auth0 issuer + immutable `sub` bind to `users.auth0_sub`, and token email claims never select a mailbox. The difference is only that the Workers are a cross-origin hop, so they also run a CORS allowlist and Cookie-Web's CSP must permit `https://*.infinitywave.online` in `connect-src`. The same CSP loads scripts only from the app's own origin and does not admit the Vercel Toolbar, which stays switched off for the project. See [Cookie-Web](/components/cookie-web) and [Cookie-Worker → Cookie Web API Workers](/components/cookie-worker#cookie-web-api-workers).
 
 **Interactive version:** [interactive app traffic diagram](/Cookie-Docs/diagrams/interactive-app.html) — the Worker API groups and their backing services.
 

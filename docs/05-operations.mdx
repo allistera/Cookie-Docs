@@ -157,7 +157,9 @@ require review rather than an automatic fresh retry window.
 The Processing mailbox keeps mail available when AI classification is deferred
 or unavailable. It does not bypass sender screening, and its warning makes clear
 that spam classification is incomplete. Draft recovery and failed offline edits
-are visible in the client; local copies are scoped to the signed-in account.
+are visible in the client; local copies are scoped to the signed-in account. The
+composer writes its local recovery copy 200 ms after typing pauses, and at once
+when it is closed, hidden or left, or the message is sent.
 
 Monitor durable delivery reconciliation, object cleanup retries and search-drift
 age after rollout. An accepted delivery with a missing sent copy is repaired
