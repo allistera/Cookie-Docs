@@ -47,7 +47,7 @@ Every route requires Auth0 authentication, enforced by both the `App.vue` render
 | `/inbox` | `TraditionalInboxView` | Classic inbox, labels, folders, search entry, and message actions |
 | `/calendar` | `CalendarView` | Calendars, events, recurrence, ICS subscriptions, natural-language event creation, dated tasks shown on their due date, and a row of Someday tasks |
 | `/scheduled` | `ScheduledSendsView` | Pending Send Later messages |
-| `/documents/:id?` | `DocumentsView` | Folder browser (grid or list) over folders, documents, and uploaded files; notes editor with templates, tags, tables, and export |
+| `/documents/:id?` | `DocumentsView` | Folder browser (grid or list) over folders, documents, and uploaded files; the built-in **Email attachments** folder at `/documents?folder=email-attachments`; notes editor with templates, tags, tables, and export |
 | `/documents/file/:fileId` | `DocumentsView` | Inline preview of an uploaded image or PDF, with download |
 | `/search` | `SearchResultsView` | Unified mail, documents, and tasks results; saved mail views use mail-only keyword search |
 | `/tasks` | `TasksView` | Today/Inbox/project task lists, nested projects, detail panel, and subtasks |
@@ -60,7 +60,7 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 | Origin / Worker | Routes used by the web app |
 | --- | --- |
 | `emails-api` / `cookie-web-emails` | `GET /emails`, `GET /emails/state`, `GET/PUT /emails/compose-preferences`, `GET/PUT /emails/out-of-office` |
-| `messages-api` / `cookie-web-messages` | message read/state/unsubscribe, bodies, attachments, contacts, `GET /messages/subscriptions` |
+| `messages-api` / `cookie-web-messages` | message read/state/unsubscribe, bodies, attachments, contacts, `GET /messages/subscriptions`, `GET /messages/attachments` |
 | `labels-api` / `cookie-web-labels` | label and label-rule CRUD |
 | `ai-api` / `cookie-web-ai` | `POST /compose`, `POST /compose-suggest`, `POST /summarize` |
 | `calendar-api` / `cookie-web-calendar` | calendar/event CRUD, subscriptions, sync, AI interpretation, and `POST /calendar-availability` |
@@ -455,6 +455,21 @@ Files are not indexed for search, cannot be tagged, and are never read by Docume
 ### Opening and downloading
 
 Image files show a thumbnail of their bytes in place of the icon, in both the grid and the list, fetched through the same authenticated route once the card scrolls into view and cached per file for the session. Images and PDFs, the sniffed types only, open in an inline preview at `/documents/file/<id>`, with a download button. Every other type downloads with its original name. The Worker serves both with `X-Content-Type-Options: nosniff`, so a file uploaded with a misleading declared type is never rendered as something it is not.
+
+### Email attachments
+
+**Email attachments** is a built-in folder, pinned first in the root of Documents and linked at the top of the sidebar's Documents tree. It lists every file the mailbox received or sent by email, so a file can be found without remembering which email carried it.
+
+- **Organised by month.** Files are listed newest first under a heading per month (**November 2026**). Each row has the file's name, who it came **From** or went **To** (with a count of the other recipients), the subject of its email, its kind, size and day.
+- **All, Received, Sent.** The control in the toolbar keeps one side of the mailbox. In **All**, each row says whether it was received or sent.
+- **Pictures from email bodies** (logos, signatures, screenshots placed in the text) are left out, because they are most of what mail carries. The **Show pictures from email bodies** checkbox lists them too, marked **Picture in email**.
+- **Download** a file from its name or its download button. A file whose contents were not stored at delivery is listed with the button disabled.
+- **Open email** (the envelope button) opens the email the file came with in the reader.
+- A hundred files load at a time; **Older attachments** adds the next hundred below.
+
+The folder is a view of the mailbox, not a place files are kept. Nothing is copied into Documents, so its files cannot be renamed, moved, deleted, tagged or dropped into, and they do not count as uploaded files. A file leaves the list when its email goes to Trash, and files on spam and on mail from held or blocked senders are never listed. The list is not searchable yet, and it is not on iOS.
+
+[Cookie-Worker](/components/cookie-worker#attachment-library) documents the API behind it, and [Operations](/operations#email-attachments) the order to deploy in.
 
 ## Document editing and bounded lists
 

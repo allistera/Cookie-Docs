@@ -15,7 +15,7 @@ Eleven Workers serve Cookie's browser APIs on custom domains, cookie-mcp serves 
 | `cookie-web-calendar` | HTTP | `/calendar-events`, `/calendars`, and `POST /calendar-availability`, including recurrence, ICS sync, fresh availability reads, and natural-language event drafts |
 | `cookie-web-emails` | HTTP | keyset-paginated `/emails` lists, `/emails/state` bootstrap, composer preferences, and out-of-office settings |
 | `cookie-web-labels` | HTTP | label and label-rule CRUD |
-| `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, thread bodies, contacts, calendar invitation state, and the list of subscriptions |
+| `cookie-web-messages` | HTTP | message body/state/labels/unsubscribe, attachments, the attachment library, thread bodies, contacts, calendar invitation state, and the list of subscriptions |
 | `cookie-web-notifications` | HTTP + cron | `/notification-event` claim/ack lease for browser notifications; `/ntfy` settings (per-user server, topic and encrypted access token) and the every-minute publish of queued new-mail alerts to each user's ntfy server |
 | `cookie-web-receipts` | HTTP + email clients | authenticated receipt status plus an unauthenticated, flood-guarded tracking pixel |
 | `cookie-web-search` | HTTP | Meilisearch mail/federated search, saved mail views, and mailbox Q&A |
@@ -431,6 +431,46 @@ A sender is one lower-cased `from_address` with at least one received message wh
 The query reads only the partial index `messages_list_unsubscribe_idx` (migration `0115`) to find list mail, then the headers of one message per sender. The index predicate is repeated word for word in `subscriptions.js`; the two must change together, or the planner stops using the index and the query goes back to reading every message's headers (about 1.2 s on a 5,000-message mailbox, against a few milliseconds).
 
 A confirmed unsubscribe (`status: unsubscribed` from the one-click, `mailto:` or AI tier) is recorded in `sender_unsubscribes` against the sender's address, and returned as `unsubscribedAt`; the client leaves such a sender out of its list unless `lastReceivedAt` is later, meaning the sender is still writing. A `manual` or `ai_failed` outcome records nothing, because the Worker cannot know whether the person finished on the sender's page. Recording is best effort: if the write fails, the unsubscribe still succeeds and `unsubscribe_record_failed` is logged.
+
+## Attachment library
+
+`GET /messages/attachments` on `cookie-web-messages` returns every file the mailbox received or sent, newest email first, for the Email attachments folder in Cookie-Web's Documents area:
+
+```json
+{
+  "attachments": [
+    {
+      "id": "…",
+      "filename": "invoice-1042.pdf",
+      "contentType": "application/pdf",
+      "sizeBytes": 204800,
+      "downloadable": true,
+      "embedded": false,
+      "direction": "received",
+      "messageId": "…",
+      "subject": "Your November invoice",
+      "correspondent": { "name": "Northwind Billing", "address": "billing@northwind.example", "others": 0 },
+      "date": "2026-11-20T08:00:00.123Z",
+      "unread": false,
+      "starred": false,
+      "archived": false
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+| Query | Effect |
+| --- | --- |
+| `direction=received` or `direction=sent` | Keeps one side of the mailbox; absent lists both. Any other value is a `400`. |
+| `embedded=1` | Also lists pictures that belong to an email's body. |
+| `before=<nextCursor>` | The next page. Pages hold 100 files; `nextCursor` is `null` on the last one. A malformed cursor is a `400`. |
+
+Nothing is stored for the library. A sent message keeps its files in `attachments` like a received one, so the list is one read over `attachments` and `messages`, with `messages.is_sent` giving the direction. Trash, confirmed spam and mail that is held or blocked by sender screening are left out. `id` is the id `GET /messages/attachment?id=` downloads; `downloadable` is `false` for a file whose bytes were not stored at delivery. The private Blob URL never leaves the Worker. `correspondent` is the sender of a received file or the first `To` recipient of a sent one, with `others` counting the remaining `To` recipients, and is `null` when the mail names nobody. `unread`, `starred` and `archived` describe the email, so the client can open it from the list in the state it is in.
+
+`embedded` is read from the mail rather than recorded at delivery: an image on a message whose HTML shows a `cid:` picture (`src="cid:…"` or `url(cid:…)`). Ingest does not keep which parts were inline, so every image of such a message is treated as part of its body, including a photo attached to an email that also has a logo in its signature; `embedded=1` lists them all. The body is only examined for image attachments. On the production mailbox (about 570 attachments) the read takes about 40 ms.
+
+The cursor is `<sent_at>|<attachment id>` with the timestamp in microseconds, bound as text so that postgres.js does not round it to milliseconds and skip or repeat a row.
 
 ## data-enricher
 

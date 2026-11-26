@@ -106,6 +106,12 @@ The migration builds `messages_list_unsubscribe_idx` inside its transaction, whi
 
 To check it after the rollout, open Subscriptions, confirm the senders listed match the newsletters in the mailbox, unsubscribe from one, and reload: that sender should no longer be listed.
 
+### Email attachments
+
+The Email attachments folder in Documents needs no migration and no new secret. Deploy `cookie-web-messages` from Cookie-Worker first, then let Vercel publish the client. If the client is published before the Worker is deployed, the folder shows **Could not load your email attachments** with a **Try again** button until it is; the rest of Documents is unaffected.
+
+To check it after the rollout, open Documents, open **Email attachments**, and confirm that a recent file is listed under the current month, that **Sent** shows only files sent from Cookie, and that a file downloads.
+
 ### September review fixes
 
 Deploy `cookie-web-send` with follow-up support **before** the Cookie-Web compatibility adapter. Apply migration `0065_task_subtree_projects.sql` to repair children left in old projects and index parent lookups. The updated tasks Worker moves each complete subtree in a transaction and serializes structural changes per owner. Deploy it promptly with the repair so older handlers cannot recreate the inconsistency.
