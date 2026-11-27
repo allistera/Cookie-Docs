@@ -1,9 +1,9 @@
 ---
 title: Cookie-Web
-description: The Vue 3 browser application, legacy Vercel send endpoint, and owner of Cookie's shared mail-app database schema.
+description: The Vue 3 browser application, its Vercel health check, and owner of Cookie's shared mail-app database schema.
 ---
 
-Cookie-Web is Cookie's browser client and the owner of the [shared Supabase schema](/data-model). The SPA is deployed at [mail.infinitywave.online](https://mail.infinitywave.online). Its browser-facing APIs have moved almost entirely to the `cookie-web-*` Cloudflare Workers in Cookie-Worker; this repository retains `api/send.js` as a compatibility endpoint used by the current web client. Delivery, retries, and reminders are forwarded to the send Worker; the browser posts composer attachments straight to that Worker's `POST /send/attachments` route and removes them with `DELETE /send/attachments/:id`, the same calls the iOS app makes.
+Cookie-Web is Cookie's browser client and the owner of the [shared Supabase schema](/data-model). The SPA is deployed at [mail.infinitywave.online](https://mail.infinitywave.online). Its browser-facing APIs run on the `cookie-web-*` Cloudflare Workers in Cookie-Worker; the only function left on Vercel is `/api/health`. The browser sends, schedules, cancels and sets follow-up reminders by calling the `cookie-web-send` Worker directly, posts composer attachments to that Worker's `POST /send/attachments` route and removes them with `DELETE /send/attachments/:id`, the same calls the iOS app makes.
 
 ## Technology
 
@@ -11,7 +11,7 @@ Cookie-Web is Cookie's browser client and the owner of the [shared Supabase sche
 | --- | --- |
 | UI | Vue 3, Pinia, Vue Router, Vite |
 | Hosting | Vercel static SPA |
-| API | Eleven Cloudflare Workers, plus the residual Vercel `/api/send` and `/api/health` functions |
+| API | Eleven Cloudflare Workers, plus the Vercel `/api/health` function |
 | Authentication | Auth0 |
 | Database | Supabase Postgres |
 | Realtime | Supabase Realtime broadcast |
@@ -31,8 +31,8 @@ Cookie-Web is Cookie's browser client and the owner of the [shared Supabase sche
   - lib/ — Worker origins and framework-independent helpers
   - router/ — route table and Auth0 navigation guard
 - api/
-  - send.js — legacy Vercel send/schedule/follow-up compatibility route
-  - _fixtures/ and _lib/ — local-development and send-route support
+  - health.js — Vercel health check of every Worker, Postgres and Meilisearch
+  - _lib/ — database and health-check support
 - e2e/ — Playwright end-to-end tests and Worker fixtures
 
 </FileTree>
@@ -68,11 +68,10 @@ The production SPA calls Worker custom domains declared in `src/lib/apiWorkers.j
 | `tasks-api` / `cookie-web-tasks` | AI Today, task projects/items/subtasks, documents, uploaded files (`/files`), preferences, and refresh |
 | `notifications-api` / `cookie-web-notifications` | `POST /notification-event` claim/ack; `GET/PUT/DELETE /ntfy` and `POST /ntfy/test` for ntfy settings |
 | `receipts-api` / `cookie-web-receipts` | authenticated status reads and the unauthenticated tracking pixel |
-| `send-api` / `cookie-web-send` | deployed Cloudflare send/schedule API; Settings calls `POST /send/confirmation` directly for agent send confirmations; scheduled flusher calls `/send/flush` over a service binding |
-| Vercel `mail.infinitywave.online` | current web-client compatibility calls to `/api/send` for send, schedule, cancel, and follow-up reminders |
+| `send-api` / `cookie-web-send` | `POST /send`, `/send/scheduled` and `/send/follow-up` for send, schedule, cancel and follow-up reminders; attachments; Settings calls `POST /send/confirmation` for agent send confirmations; scheduled flusher calls `/send/flush` over a service binding |
 
 :::note
-The Cloudflare routes use clean paths instead of the former Vercel `?resource=` multiplexing. Cookie-Web's remaining `/api/send` file is a compatibility path, not evidence that the other APIs still run on Vercel.
+The Cloudflare routes use clean paths instead of the former Vercel `?resource=` multiplexing. The former Vercel `/api/send` proxy has been removed; `/api/health` is the one Vercel function left.
 :::
 
 ## Out of office
@@ -308,7 +307,11 @@ once. **Generate** fills in a random, hard-to-guess topic.
 The server must be a public `https://` host name: an IP address, a name without
 a dot, or an internal name such as `.local` or `.internal` is refused, and a
 server that answers a publish with a redirect has that publish counted as failed
-rather than followed, so the token cannot be led elsewhere.
+rather than followed, so the token cannot be led elsewhere. The server's name is
+also looked up on every publish, and a server whose name resolves to a private
+address is refused: that publish fails as a network error would, and **Send test
+notification** reports it as a failure. The rule is the one Cookie-Worker applies
+to every [URL taken from mail or settings](/components/cookie-worker#requests-to-urls-from-mail-or-settings).
 Topics follow ntfy's rule (1 to 64 letters, digits, hyphens or underscores), and
 two Cookie accounts cannot share a topic on one server. The access token is sent
 to the `cookie-web-notifications` Worker once, stored encrypted there, and never
@@ -336,11 +339,15 @@ The [saved-view API contract](/components/cookie-worker#saved-mail-views-api) de
 
 AI Today opens with a **Today's Events** card above the suggested to-dos whenever any calendar has an event today; the classic Inbox lists mail only, keeping just the next-event chip beside its tabs. The card uses the same shape as the to-dos card: a header, then one row per event with its calendar's colour dot where the checkbox would be, the time (**All day** or start and end), the title, the calendar's name, and an **Open** button that opens the event in Calendar. All-day events come first, then the rest in start order, and events already over read quieter like done mail. The card and the next-event chip share one request for the day's events, refreshed every five minutes, on focus, and at midnight; if the calendar Worker is unreachable both simply disappear.
 
+## Events over several days
+
+The Calendar view's event dialog has an **End date** beside the start date, so an event can run overnight or across several days. Changing the start date moves the end date by the same number of days, and an end before the start is refused with "Choose an end after the start." For an all-day event the end date is the last day it covers, and editing only the title of a multi-day all-day event keeps all its days. A multi-day event, timed or all-day, is drawn on each day it covers, in the Calendar view and in the calendar sidebar.
+
 ## Calendar sidebar
 
 Mail, Documents and Tasks can dock a read-only day calendar on the right. The calendar button at the right of the header or the `]` key (listed in the keyboard shortcuts dialog) shows and hides it; Calendar itself has no sidebar, being the full view. It starts closed, and whether it is open is remembered in that browser only, not across devices. The sidebar shows one day: a title with previous and next day controls and a Today button when another day is shown, a mini month for picking a day, a **Calendars** list, an **Up next** card for today's next timed event with a countdown, chips for all-day events, a 24-hour timeline that scrolls the current time into view with a now line, and an **Open Calendar** link to the same day. Overlapping events sit side by side and finished events fade. Every calendar the Calendar view lists is drawn, the **Tasks** one included: a task due that day sits among the events, as an all-day chip or at its due time for its estimate (thirty minutes without one), with a dashed edge and a checkbox glyph, and a completed one stays, ticked, faded and struck through. A task with a due time never becomes the Up next card. The Up next card has a **Join** button when the event's location or description holds an `https` link on a known video-call host (Google Meet, Zoom, Microsoft Teams, Whereby, Webex, FaceTime); other links never become a button. The **Calendars** list names every calendar the Calendar view lists, in the same order (Cookie calendars, subscriptions, Google Calendar) with **Tasks** last, each with its colour. Click one to hide its events and tasks from the day, Up next included, and again to show them; the choice lasts until the page is next loaded, when every calendar shows again, as in the Calendar view. The list folds away from its header, and being folded is remembered in that browser like the sidebar itself.
 
-Clicking an event opens a details card with its time, calendar and location, the same Join button, and **Open in Calendar**, which opens that event in the Calendar view; Escape closes the card. A task's card shows whether it is done and has **Open task** instead, which opens it in Tasks. Nothing is created, edited or completed from the sidebar. While it is open it takes the place of the next-event chip beside the inbox tabs, and on a daily note it follows the note's date and replaces the daily-note calendar panel. It reads the existing `GET /calendars` route, and `GET /calendar-events` and the tasks worker's `GET /task-items?view=calendar&completed=1` window for the day and the one before it, so an event or task that runs past midnight shows its remainder from 00:00; if the tasks request fails the events still show. It refreshes every five minutes, on focus and when the tab becomes visible again, reads the tasks again as soon as one is changed elsewhere on the page, and moves to the new day at midnight unless a daily note pins it. Below 1100px wide it floats over the content instead of narrowing it, and on phones (760px and below) it is hidden and the chip stays.
+Clicking an event opens a details card with its time, calendar and location, the same Join button, and **Open in Calendar**, which opens that event in the Calendar view; Escape closes the card. A task's card shows whether it is done and has **Open task** instead, which opens it in Tasks. Nothing is created, edited or completed from the sidebar. While it is open it takes the place of the next-event chip beside the inbox tabs, and on a daily note it follows the note's date and replaces the daily-note calendar panel. It reads the existing `GET /calendars` route, `GET /calendar-events` from a week before the day, and the tasks worker's `GET /task-items?view=calendar&completed=1` window for the day and the one before it, so an event that runs past midnight or over several days, or a task that runs past midnight, shows its remainder from 00:00; if the tasks request fails the events still show. It refreshes every five minutes, on focus and when the tab becomes visible again, reads the tasks again as soon as one is changed elsewhere on the page, and moves to the new day at midnight unless a daily note pins it. Below 1100px wide it floats over the content instead of narrowing it, and on phones (760px and below) it is hidden and the chip stays.
 
 ## Calendar invitations
 
@@ -381,7 +388,7 @@ To, Cc and Bcc share one limit of 20 recipients, and Send stays off while any en
 
 Drafts, Send Later and an undone send keep all three lines. The Sent copy stores them too, including Bcc, which the delivered mail never shows. The Drafts and Scheduled lists still name only the "to" recipients.
 
-The lines are `src/components/ComposerCopies.vue`, shared by `ComposerWindow.vue` and the reply box in `TraditionalInboxView.vue` (which loads it as its own chunk). The browser sends `cc` and `bcc` to `POST /api/send` only when someone is on them. [Cookie-Worker](/components/cookie-worker#cc-and-bcc-recipients) documents the API side, and [Operations](/operations#cc-and-bcc) the order to deploy in.
+The lines are `src/components/ComposerCopies.vue`, shared by `ComposerWindow.vue` and the reply box in `TraditionalInboxView.vue` (which loads it as its own chunk). The browser sends `cc` and `bcc` to `POST /send` on `cookie-web-send` only when someone is on them. [Cookie-Worker](/components/cookie-worker#cc-and-bcc-recipients) documents the API side, and [Operations](/operations#cc-and-bcc) the order to deploy in.
 
 ## Several messages and emails open at once
 
@@ -495,7 +502,7 @@ The document icon picker opens on **Icons**, a built-in set of about 250 Materia
 
 Plain tables use a lightweight editable grid with row and column controls; **Open spreadsheet** activates formulas and advanced tools. Existing formula tables and workbook snapshots keep the full spreadsheet editor. Offscreen rich editors retain their stored data until activation, and document blocks become interactive only after Editor.js has installed its change observer.
 
-Before the editor shows a document, the text of its paragraphs, headings and list items goes through the same inline allow-list as the export, so HTML that another writer stored (through the API or the MCP server) is not rendered as it is; the stored blocks are not changed. Hiding or closing the page sends a pending save at once rather than waiting for the autosave timer. Starring, moving or changing the icon of the open document does not make its next save report a conflict, and a document renamed in the folder browser shows its new name at once.
+Before the editor shows a document, the text of its paragraphs, headings and list items goes through the same inline allow-list as the export, so HTML that another writer stored (through the API or the MCP server) is not rendered as it is. The Worker applies the same allow-list when blocks are saved, by any writer, and removes other markup rather than refusing the save (see [Cookie-Worker](/components/cookie-worker#document-block-html-cookie-web-tasks)); the browser check covers blocks stored before that. Hiding or closing the page sends a pending save at once rather than waiting for the autosave timer. Starring, moving or changing the icon of the open document does not make its next save report a conflict, and a document renamed in the folder browser shows its new name at once.
 
 Large mail and document lists render a bounded window, locating visible rows with binary search. Document/task pages are fetched incrementally. Task deep links load the full task before deciding whether it exists; network failures remain retryable. Creating an AI document completes its save without overriding navigation made while creation was pending.
 
@@ -524,7 +531,7 @@ npm run test:e2e
 | `VITE_AUTH0_DOMAIN` / `VITE_AUTH0_CLIENT_ID` / `VITE_AUTH0_AUDIENCE` | Browser Auth0 configuration |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Content-free Realtime inbox pings |
 
-The `/api/send` adapter forwards bearer-authenticated requests to the fixed send Worker origin. Delivery credentials, quotas, reminder validation, tracking pixels, and sent-copy persistence are owned by Cookie-Worker. A failed client send preserves its request ID for retry; a confirmed send releases it so identical new mail can be sent intentionally, and so does a provider rejection (`422` `DELIVERY_REJECTED`), so the draft can be edited and sent again. `503` `DELIVERY_NOT_SENT` keeps the ID, and the retry resumes the same delivery.
+The browser calls the send Worker origin directly with the user's bearer token, refuses redirects, and gives up after 25 seconds: a send with no answer in that time, or one lost to a network failure, is reported as `DELIVERY_PENDING` and its request ID is kept, because the email may have gone. Vercel preview deployments and local development against the production send Worker are refused by its CORS allowlist, as they are by every other Worker. Delivery credentials, quotas, reminder validation, tracking pixels, and sent-copy persistence are owned by Cookie-Worker. A confirmed send releases its request ID so identical new mail can be sent intentionally. A failure follows the [send error contract](/components/cookie-worker#send-error-contract), which `src/lib/mailSending.js` applies: a failure where the email cannot have gone, such as a provider rejection (`422` `DELIVERY_REJECTED`), a validation error or a quota refusal, releases the ID, and the composer says "The email was not sent. Check it, then send it again." so the draft can be edited first. `DELIVERY_PENDING`, `DELIVERY_NOT_SENT` and `5xx` failures keep the ID and the retry resumes the same delivery; `DELIVERY_UNCERTAIN` and `DELIVERY_CONFLICT` keep it and are shown without a retry.
 
 `/api/health` checks every Worker's `/health` route, Postgres and Meilisearch. One run's result answers every request to that function instance for the next 30 seconds.
 
