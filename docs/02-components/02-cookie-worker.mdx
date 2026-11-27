@@ -285,6 +285,32 @@ ICS `DURATION` values support only positive elapsed hours, minutes, and seconds 
 
 An MCP agent's `cookie_send_email` also needs a `confirmation` from the owner. The owner creates one in Cookie under Settings, MCP clients, **Connected agents**, with **Create send confirmation**, which calls `POST /send/confirmation`: it answers a browser session only, refuses an agent with `403`, and allows ten a minute. A confirmation is 64 hex characters, valid for ten minutes and bound to the first request id it is used with, so retries of that email succeed and another email needs a new one. Without a valid confirmation, `/send` answers an agent `403` `SEND_CONFIRMATION_REQUIRED`. Browser sends never need one.
 
+### Send error contract
+
+Every failure of `POST /send`, immediate or scheduled, is one row of this table, whether the caller is Cookie-Web, Cookie-iOS or an MCP agent. The coded rows are `SEND_ERROR_CONTRACT` in `workers/cookie-web-send/src/sendErrorContract.js`, and Cookie-Worker's `docs/delivery-and-search-recovery.md` keeps the same table. In the last column, **Release** frees the request id so the draft can be edited and sent anew, **Retry** keeps the draft locked and retries the same unchanged request, and **Surface** keeps it locked and shows the error without retrying.
+
+| Code | HTTP status | Meaning | May have been sent | Client |
+| --- | --- | --- | --- | --- |
+| `DELIVERY_REJECTED` | `422` | The provider refused this exact message | No | Release |
+| `DELIVERY_NOT_SENT` | `503`, `Retry-After: 5` | Recorded, but stopped before the provider was called | No, though the recorded delivery can still go out on a retry or the cron | Retry |
+| `DELIVERY_PENDING` | `503`, `Retry-After: 5` | Another attempt holds the lease, or the provider gave no clear answer. Cookie-Web also reports a send with no answer within 25 seconds, or a network failure, under this code | Maybe | Retry |
+| `DELIVERY_UNCERTAIN` | `409` | Five attempts or the 23-hour window passed without a provider answer | Maybe | Surface; never retry with a new request id |
+| `DELIVERY_CONFLICT` | `409` | The request id was already used for different content | An earlier email under that id may have been | Surface |
+| `DELIVERY_REQUEST_ID_REQUIRED` | `409` | A request without a request id matches a completed send older than 24 hours | The earlier one was; this one was not | Release; a new email needs a new request id |
+| `SEND_CONFIRMATION_REQUIRED` | `403` | An agent send or schedule has no valid confirmation for this request id | No | Release |
+| `SEND_CONFIRMATION_UNAVAILABLE` | `503` | The confirmation table is missing | No | Retry later |
+| none | `400` | Invalid JSON, recipients, subject or body, `attachmentIds`, `sendAt` or `followUpAt`, or attachments over the size limit | No | Release |
+| none | `401` | Missing or invalid access token | No | Release |
+| none | `403` | Mailbox access is not provisioned | No | Release |
+| none | `404` | Reply target or attachment not found | No | Release |
+| none | `413` or `415` | Body over 4.5 MB, or not JSON | No | Release |
+| none | `429` | Per-minute quota (10), daily cap (300), or 50 pending scheduled sends | No | Release |
+| none | `500` | Unexpected failure while scheduling or before delivery | No for a schedule; a recorded immediate delivery resumes on retry | Retry |
+| none | `502` | Unexpected failure in the delivery step | Unlikely; a recorded delivery resumes on retry | Retry |
+| none | `503` | Sending is not configured, or the quota check failed | No | Retry |
+
+Only `DELIVERY_PENDING` and `DELIVERY_NOT_SENT` carry `Retry-After`; the `409` codes must not be retried automatically, so they have none. The scheduled-send flush maps the same codes onto the row: `DELIVERY_NOT_SENT` and `DELIVERY_PENDING` leave it pending, `DELIVERY_REJECTED` marks it failed, and `DELIVERY_UNCERTAIN` or `DELIVERY_CONFLICT` mark it uncertain. Calendar invitation replies (`POST /send/invitation-reply`) have their own mapping, described under [Calendar invitations](#calendar-invitations).
+
 ## Cc and Bcc recipients
 
 `POST /send` on `cookie-web-send` takes optional `cc` and `bcc` beside `to`. Each is a comma-separated list of addresses, as `to` is. A blank or absent line means nobody; a line that is present but unusable (an entry that is not an address, or not a string) rejects the request with `400` instead of sending without it. To, Cc and Bcc together are limited to 20 recipients.
@@ -398,6 +424,10 @@ A task's discussion thread lives in `task_comments` (migration `0096`) and is se
 
 `task_comments.task_id` cascades from `task_items`, so deleting a task or a project, or a Todoist run removing a vanished mirror, takes threads with it without the Worker seeing their keys. Each of those paths reads the owner's attachment keys before the delete and, afterwards, removes the objects of the keys that no longer have a row (`attachmentKeysOf` and `deleteVanishedAttachments` in `src/taskComments.js`). Nothing is read back when the owner had no attachments. Without the `FILES` binding a comment with a file answers `503`; text comments still work.
 
+## Document block HTML (`cookie-web-tasks`)
+
+Text in document blocks is Editor.js inline HTML. Before `cookie-web-tasks` stores blocks, it reduces that HTML to basic inline formatting: `b`, `strong`, `i`, `em`, `u`, `s`, `del`, `code`, `a` and `br`, with `href` as the only attribute a link keeps, and only for `http`, `https` and `mailto` links. Every other tag and attribute is removed rather than rejected, so the save still succeeds; `script`, `style` and similar elements go with their content, and relative or `#` links lose their `href`. This covers every writer: document and template saves, `PATCH` of a document's blocks, the daily note seed and the MCP server's document tools, which save through the same routes. It applies to paragraph, header and list text and to image captions; other block types pass through unchanged. The rules match the browser's allow-list in Cookie-Web (`src/lib/documentExport.js`), which still cleans rows written before this check when it shows them. The code is `src/inlineHtml.js`.
+
 ## Uploaded files (`cookie-web-tasks`)
 
 Files uploaded to Documents are handled by `cookie-web-tasks` under `/files`. Bytes go to the private R2 bucket `cookie-files` (binding `FILES`); metadata goes to `document_files`. Any MIME type is accepted up to 25 MB, with 60 uploads per user per minute.
@@ -420,6 +450,10 @@ A message read from `cookie-web-messages` carries its conversation: the newest 5
 ## AI-assisted unsubscribe
 
 `cookie-web-messages` handles standards-based one-click and `mailto:` unsubscribe first. A one-click request counts as an unsubscribe only when the sender answers with a `2xx` status; a redirect is not followed, and like any other answer it falls through to the next method. When a sender offers only a web page, an optional AI tier can inspect the untrusted page, propose one bounded form submission, and verify the result. URL, redirect, form, size, timeout, and public-address checks constrain the model; login, CAPTCHA, JavaScript-only, or ambiguous flows fail closed.
+
+## Requests to URLs from mail or settings
+
+Every fetch of a URL that came from an email or from a user's settings goes through one policy, `requestPublicHttps` in `shared/safe-https.js`: the one-click unsubscribe request, the AI unsubscribe page and form requests, calendar subscription feeds (sync and availability reads), and publishes to a user's ntfy server. Each hop must be an `https` URL without credentials whose host resolves, through a DNS-over-HTTPS lookup, only to public addresses, and must pass the caller's own rule when it has one (the calendar's feed host allowlist, for example). `fetch` never follows a redirect itself: one-click unsubscribe, feeds and ntfy get the `3xx` back and treat it as a failure, while the AI unsubscribe tier follows up to three, checking each new address again. One timeout covers every hop and the body, and a body is read only up to the caller's size cap. An ntfy server whose name resolves to a private address is therefore refused on every publish, which fails like a network error. `cookie-web-messages`, `cookie-web-calendar` and `cookie-web-notifications` also set the `global_fetch_strictly_public` compatibility flag.
 
 ## Subscriptions
 

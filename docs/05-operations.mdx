@@ -15,6 +15,8 @@ Each repository owns its validation and deployment surface. Cookie-Web and Cooki
 | Cookie-Agents | Ruff, Pytest, and Docker image build | Render Blueprint auto-deploys the API on `main`; separate workflow publishes static API docs |
 | Cookie-Docs | Format and production build | GitHub Pages workflow deploys `dist/` from `main` |
 
+A knip check is being added to the Cookie-Web and Cookie-Worker CI. It fails the build when a file or export has no production importer, so code that only tests still use is removed rather than left behind.
+
 Cookie-Worker deploy validation always checks the whole repository before publishing. A single-Worker selection then dry-runs that capsule once more; `all` publishes the discovered Workers in workflow order under one production concurrency lock.
 
 ## Validation commands
@@ -137,7 +139,7 @@ Two cross-Worker pairs must agree:
 
 `cookie-web-tasks` also binds the private R2 bucket `cookie-files` as `FILES` for files uploaded to Documents. Create it once with `wrangler r2 bucket create cookie-files`; the bucket is never made public, and bytes are served only through the Worker's `/files/:id/content` route.
 
-Vercel holds Cookie-Web's browser build settings; the compatibility send adapter forwards delivery to the Worker. Composer attachment uploads go from the browser to `cookie-web-send` directly, so Vercel needs no Blob storage or database settings for them. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
+Vercel holds Cookie-Web's browser build settings and the `DATABASE_URL` used by the `/api/health` check. The browser sends mail and uploads composer attachments to `cookie-web-send` directly, so Vercel needs no send, Blob storage or delivery settings. Render holds Cookie-Agents' API key, Gmail OAuth credentials, optional Todoist token, and managed-database configuration. GitHub Pages needs no runtime Cookie data secrets.
 
 ## Local-development safety
 
@@ -158,8 +160,9 @@ The Processing mailbox keeps mail available when AI classification is deferred
 or unavailable. It does not bypass sender screening, and its warning makes clear
 that spam classification is incomplete. Draft recovery and failed offline edits
 are visible in the client; local copies are scoped to the signed-in account. The
-composer writes its local recovery copy 200 ms after typing pauses, and at once
-when it is closed, hidden or left, or the message is sent.
+composer and the inline reply box each write their local recovery copy 200 ms
+after typing pauses, and at once when the composer is closed or the reply box
+loses focus, when the page is hidden or left, or when the message is sent.
 
 Monitor durable delivery reconciliation, object cleanup retries and search-drift
 age after rollout. An accepted delivery with a missing sent copy is repaired

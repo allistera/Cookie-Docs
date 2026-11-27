@@ -11,7 +11,7 @@ Cookie's AI features are deliberately narrow: each one assists a specific, famil
 | Spam detection | `mail-app-ingest` (Cookie-Worker) | Same structured response as auto-tagging |
 | Federated search (mail, documents & tasks) | `cookie-web-search` (Cookie-Worker) | Meilisearch hybrid/federated search |
 | Assistant chat (mail, documents & tasks) | `cookie-web-search` (Cookie-Worker) | Meilisearch conversational search, OpenAI chat model |
-| Mailbox Q&A (`POST /ask`, legacy) | `cookie-web-search` (Cookie-Worker) | OpenAI Responses API |
+| Mailbox Q&A (`POST /ask`, legacy) | `cookie-web-search` (Cookie-Worker) | OpenAI Chat Completions API |
 | AI Compose | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API |
 | Writing suggestions in the composer | `cookie-web-ai` (Cookie-Worker) | OpenAI Responses API, no reasoning pass |
 | Document chat and editing | `cookie-web-ai` (Cookie-Worker) | GPT-6.1 Sol via OpenAI Responses API |
@@ -38,7 +38,7 @@ Every model is an OpenAI model called with the one `OPENAI_API_KEY` each Worker 
 
 The assistant chat is the one feature still on an older model, and it has a deadline: OpenAI removes `gpt-4o-mini` on 2027-01-14. The chat runs inside Meilisearch, which calls OpenAI's Chat Completions API with a search tool. The GPT-5.6 and GPT-6 models accept tools there only with `reasoning_effort` set to `none`, and Meilisearch (checked through 1.56.2) rejects that value before the request leaves it, so each of those models fails with "Function tools with reasoning_effort are not supported". Before the deadline, either upgrade to a Meilisearch release that forwards `none` and set the default to `gpt-6-luna`, or set `OPENAI_CHAT_MODEL` to `gpt-5.4-mini` (0.75 / 4.50), the newest model that works there today.
 
-The short drafting calls (AI Compose, natural-language calendar drafts and task quick-add) set `reasoning.effort` to `none` on a reasoning model, and an AI Task plan sets it to `low`: reasoning tokens count against each call's small output allowance (500 to 700 tokens for compose and calendar drafts) and could otherwise use all of it and leave no draft.
+The short drafting calls (AI Compose, natural-language calendar drafts and task quick-add) set `reasoning.effort` to `none` on a reasoning model, and an AI Task plan sets it to `low`: reasoning tokens count against each call's small output allowance (500 to 700 tokens for compose and calendar drafts) and could otherwise use all of it and leave no draft. Every Responses call in Cookie-Worker is built and sent by one helper, `requestResponses` in `shared/openai.js`: each call site passes its own output cap (`maxOutputTokens`, sent as `max_output_tokens`), optional reasoning effort and timeout, and the helper sends `reasoning.effort` only to a model that supports reasoning. Change a call's cap or reasoning at its call site, and the model lists in that helper. The legacy `POST /ask` and the assistant chat use Chat Completions and do not go through it.
 
 AI Today settings saved with a model that has since been retired (`gpt-5-nano`, `gpt-5.6-luna`, `gpt-4.1-nano`) read back as the default, so no data change is needed when the list moves on.
 
@@ -217,7 +217,7 @@ Triage is a view, not a mailbox mutation. It never sends, archives, or deletes a
 
 - **Forwarding first**: in `mail-app-ingest`, storage, classification, and monitoring failures never intentionally block mail delivery.
 - **Server-trusted context**: AI Compose and reply context are fetched server-side, never trusted from the client. Writing suggestions load reply context the same way.
-- **Constrained egress**: AI unsubscribe can submit only a validated form to a related public HTTPS host; arbitrary model-selected requests are rejected.
+- **Constrained egress**: AI unsubscribe can submit only a validated form to a related public HTTPS host; arbitrary model-selected requests are rejected. Its page and form requests go through the same safe-HTTPS policy as every other fetch of a URL from mail or settings (see [Cookie-Worker](/components/cookie-worker#requests-to-urls-from-mail-or-settings)).
 - **Bounded automation**: AI never sends or deletes mail. Only a spam verdict at or above `0.98` changes folder placement automatically; each label's `auto_apply` setting independently controls whether AI may apply it.
 - **Rate limits**: `0039_api_rate_limits.sql` gives AI and enricher requests durable, per-user Postgres counters shared across serverless instances — see [Data model](/data-model#rate-limits).
 - **Sanitised error reporting**: `mail-app-ingest` reports failures to Sentry without email or model content (`sentry.js`).
