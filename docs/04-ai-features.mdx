@@ -48,7 +48,7 @@ AI Inbox is Cookie's normal mailbox with assistance layered around it — not a 
 
 | When | What runs | Result |
 | --- | --- | --- |
-| When mail arrives | Deterministic label rules, AI classification, spam scoring, and priority | Labels and Spam placement update; the message becomes available to search |
+| When mail arrives | Deterministic label rules, AI classification, spam scoring, priority, and the mail-list preview | Labels and Spam placement update; the list shows a sentence or two under the subject; the message becomes available to search |
 | When the user asks | Search, the assistant chat, a thread summary, or AI Compose | A result or draft is returned to the authenticated client |
 | While the user writes a message | Writing suggestions | The likely next words are shown in grey after the caret; they join the message only if the user presses Tab |
 | Saved schedule or on refresh | AI Today triage | Recent-inbox triage is stored for AI Today; news and task extraction do not run |
@@ -83,10 +83,14 @@ The classification request contains:
 - only user labels whose **Auto-tag** switch is enabled, including each label's ID, name, and description;
 - a system instruction that treats the email as untrusted data, never as instructions.
 
-The OpenAI response is constrained to a strict JSON schema containing candidate label IDs and confidences, a spam verdict/score/reason, a `low`/`normal`/`high` priority, and a `paper_trail` flag for receipts, confirmations and other transactional records. The default model is `gpt-6-luna` (overridable with `AI_MODEL`), and the stored prompt version is `email-enrichment-v6`.
+The OpenAI response is constrained to a strict JSON schema containing candidate label IDs and confidences, a spam verdict/score/reason, a `low`/`normal`/`high` priority, a `paper_trail` flag for receipts, confirmations and other transactional records, and a `preview` for the mail list. The default model is `gpt-6-luna` (overridable with `AI_MODEL`), and the stored prompt version is `email-enrichment-v7`.
+
+The `preview` is the line the mail list shows under each subject. The model is asked for one or two short plain-text sentences, 30 words at most, in the email's own language, that say what the subject line does not: the request, the amount, the date, the decision or the result. It is told not to repeat the subject, greet, name the sender or describe the email, and to return nothing when the body adds nothing. The Worker collapses the text to one line, cuts it at a word boundary after 240 characters, and stores it in `message_ai.preview` (migration `0118`) with the rest of the classification. It costs no extra request, only the preview's output tokens.
+
+Mail classified before previews existed, sent mail, and mail whose classification has not finished have no preview; the list shows the start of the body (`messages.snippet`) for those. Nothing rewrites previews for existing mail.
 
 :::note
-Arrival-time enrichment never generates a message summary. Reading-view summaries are a separate, authenticated, user-triggered operation.
+Arrival-time enrichment writes only this short preview, never a full summary. Reading-view summaries are a separate, authenticated, user-triggered operation.
 :::
 
 ### 3. Apply local policy after the model responds

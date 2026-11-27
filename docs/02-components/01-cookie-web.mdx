@@ -194,6 +194,20 @@ runs in the browser on the sanitized body (`src/lib/trackingImages.js`); nothing
 is stored, so an email whose only remote image was a tracker simply opens
 without a **Show images** prompt.
 
+## Mail list previews
+
+Each row of a mail list shows the subject in bold, on read and unread mail
+alike, and under it a preview of a sentence or two in regular weight. An unread
+row is still marked by its dot, its bold sender and darker text. The preview is
+written when the mail arrives, by the same classification that labels it (see
+[AI features](/ai-features#2-classify-the-message)), and says what the subject
+line leaves out rather than repeating it. It wraps to two lines at most.
+
+Mail that has no written preview, which is sent mail and anything received
+before previews were introduced, shows the start of its body in the same place.
+Search results always show the start of the body. Drafts keep their one-line
+rows.
+
 ## Paper Trail
 
 **Paper Trail** sits under AI Today in the Email sidebar and lists receipts,

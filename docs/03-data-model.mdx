@@ -26,7 +26,7 @@ The script creates `schema_migrations` if needed and safely skips files already 
 | Area | Introduced by | Notes |
 | --- | --- | --- |
 | Core mail schema | `0001`–`0009` | Messages, labels, inbound fields, snoozing, sent mail, label descriptions |
-| AI enrichment | `0010`, `0011`, `0015` | Per-label auto-tag settings, model/label provenance, durable `message_ai` pending/failed state |
+| AI enrichment | `0010`, `0011`, `0015`, `0118` | Per-label auto-tag settings, model/label provenance, durable `message_ai` pending/failed state, and the mail-list `preview` |
 | Scheduled mail | `0012`, `0032`, `0033`, `0044`, `0046` | Inbound snooze (passive: a due message just becomes visible again) vs. "Send Later" (active: `scheduled_sends` + leases, polled by `scheduled-send-flusher`) |
 | Realtime notifications | `0016` | Short-lived opaque event tokens; Realtime broadcasts only the token, an authenticated function resolves sender/subject |
 | Search | `0017`, `0042`, `0048`, `0049`, `0055`–`0057` | Search weighting, document search, Meilisearch drift tracking (`search_indexed_at`) for messages/documents/tasks, embedding columns dropped |
