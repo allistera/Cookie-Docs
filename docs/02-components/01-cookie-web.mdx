@@ -409,9 +409,11 @@ Any other path under `/automations` shows Dashboard. The sidebar can be resized 
 - **Claude desktop app and claude.ai**: adding a custom connector under Settings, Connectors, with the client ID under Advanced settings. There is no command for these.
 - **Codex**: the `mcp_oauth_callback_port` line for `~/.codex/config.toml`, `codex mcp add`, `codex mcp login cookie`, and `codex mcp list` to confirm.
 
-Each command sits in its own block with a **Copy** button, which reads **Copied** for two seconds. The page ends with how to check a connection (ask the assistant to list your Cookie labels) and what to look at if sign-in fails, and links to Settings, MCP clients, where send confirmations are created.
+Each command sits in its own block with a **Copy** button, which reads **Copied** for two seconds. The page then says how to check a connection (ask the assistant to list your Cookie labels), holds a **Send confirmations** card, and ends with what to look at if sign-in fails.
 
-Settings, MCP clients shows the same commands. Both pages read them from `src/lib/mcpClients.js`, which must stay aligned with the Cookie-Worker README's "Connect a client" section. The page is `AutomationsConnections.vue`, loaded by `AutomationsView.vue`; it calls no API.
+**Send confirmations** is where the owner creates the one-use confirmation an agent needs before `cookie_send_email` will send (see [sending limits and refusals](/components/cookie-worker#sending-limits-and-refusals)): **Create send confirmation** shows a 64-character code with a **Copy** button and its expiry, ten minutes on. It is the page's only API call, `POST /send/confirmation` on `cookie-web-send`.
+
+Settings used to have an **MCP clients** section with the same instructions and the confirmation button. It is gone, and its address, `/settings/mcp-clients`, now leads here. The commands live in `src/lib/mcpClients.js`, which must stay aligned with the Cookie-Worker README's "Connect a client" section. The page is `AutomationsConnections.vue`, loaded by `AutomationsView.vue`, with the card's body in `SendConfirmation.vue`.
 
 ### Chat
 
