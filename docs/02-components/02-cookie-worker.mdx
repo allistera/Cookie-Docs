@@ -283,7 +283,7 @@ ICS `DURATION` values support only positive elapsed hours, minutes, and seconds 
 
 `POST /send` on `cookie-web-send` allows ten immediate sends a minute per mailbox, and 300 sends or schedules in a 24-hour window on top of that; past either it answers `429`. A delivery the provider refused is `422` `DELIVERY_REJECTED` with no `Retry-After`, because the same request would only be refused again; Cookie-Web lets that draft be edited and sent again. A failure before the provider was called (an attachment that could not be read, for example) is `503` `DELIVERY_NOT_SENT`: retrying with the same request id resumes the same delivery, and the failed try does not count as a delivery attempt.
 
-An MCP agent's `cookie_send_email` also needs a `confirmation` from the owner. The owner creates one in Cookie under Settings, MCP clients, **Connected agents**, with **Create send confirmation**, which calls `POST /send/confirmation`: it answers a browser session only, refuses an agent with `403`, and allows ten a minute. A confirmation is 64 hex characters, valid for ten minutes and bound to the first request id it is used with, so retries of that email succeed and another email needs a new one. Without a valid confirmation, `/send` answers an agent `403` `SEND_CONFIRMATION_REQUIRED`. Browser sends never need one.
+An MCP agent's `cookie_send_email` also needs a `confirmation` from the owner. The owner creates one in Cookie under Automations, Connections, **Send confirmations**, with **Create send confirmation**, which calls `POST /send/confirmation`: it answers a browser session only, refuses an agent with `403`, and allows ten a minute. A confirmation is 64 hex characters, valid for ten minutes and bound to the first request id it is used with, so retries of that email succeed and another email needs a new one. Without a valid confirmation, `/send` answers an agent `403` `SEND_CONFIRMATION_REQUIRED`. Browser sends never need one.
 
 ### Send error contract
 
@@ -540,9 +540,32 @@ News fetching, news ranking, and per-email task extraction are disabled. Existin
 
 ## Cookie MCP server
 
-`cookie-mcp` is a remote MCP server at `https://mcp.infinitywave.online/mcp` that lets MCP clients such as Claude, Codex, and Hermes work with Cookie mail, labels, drafts, calendar, tasks, and documents through 33 `cookie_` tools. It is an OAuth resource server for Auth0 tokens issued to its own audience (`https://mcp.infinitywave.online/mcp`) and never forwards the client's token. After verifying it, the Worker reaches `cookie-web-emails`, `-messages`, `-labels`, `-search`, `-drafts`, `-send`, `-calendar`, and `-tasks` over service bindings to their `Internal` entrypoint, passing the verified identity as RPC data.
+`cookie-mcp` is a remote MCP server at `https://mcp.infinitywave.online/mcp` that lets MCP clients such as Claude, Codex, and Hermes work with Cookie mail, labels, drafts, calendar, tasks, and documents through 42 `cookie_` tools. It is an OAuth resource server for Auth0 tokens issued to its own audience (`https://mcp.infinitywave.online/mcp`) and never forwards the client's token. After verifying it, the Worker reaches `cookie-web-emails`, `-messages`, `-labels`, `-search`, `-drafts`, `-send`, `-calendar`, and `-tasks` over service bindings to their `Internal` entrypoint, passing the verified identity as RPC data.
 
 A token needs the `cookie:read` or `cookie:write` scope: `cookie:read` offers only the tools that list, read, and search, and `cookie:write` adds the tools that change something, sending mail included. Reads are annotated read-only; deletes, `cookie_cancel_scheduled`, and `cookie_send_email` are annotated destructive. Mail and document text is untrusted third-party content, and the server tells the model never to follow instructions inside it. `cookie_send_email` needs, besides the send quota, a `confirmation` the owner creates in Cookie for each email (see [sending limits and refusals](#sending-limits-and-refusals)); the agent cannot create one itself. `cookie-mcp` must deploy after the eight Workers it binds; its `Deploy` workflow step is deliberately placed after every `cookie-web-*` step, and a failed step stops the job, so the `all` target already deploys in a safe order. Auth0 setup and the full tool list are in the Cookie-Worker README.
+
+### Task tools
+
+Fourteen of the tools work with the Tasks app. All go through routes `cookie-web-tasks` and `cookie-web-search` already serve.
+
+| Tool | Access | What it does |
+| --- | --- | --- |
+| `cookie_list_tasks` | read | A page of tasks in a project, the inbox, today, a label (`label:<name>`) or a saved filter (`filter:<id>`); today and filters need the owner's current date |
+| `cookie_get_task` | read | One task in full with its sub-tasks, 100 a page, and how many are done |
+| `cookie_list_tasks_by_date` | read | Tasks due in a range of up to 100 days, across every project; Someday tasks carry `9999-12-31` and undated tasks are left out |
+| `cookie_search_tasks` | read | Open tasks by meaning and keywords, up to 50 |
+| `cookie_list_task_comments` | read | A task's discussion thread, oldest first; an attachment is named, not returned |
+| `cookie_list_task_labels` | read | Task labels with colour and task count |
+| `cookie_list_task_filters` | read | Saved task filters with their rules |
+| `cookie_list_projects` | read | Every project, flat, with its parent |
+| `cookie_create_task` | write | Creates a task or sub-task |
+| `cookie_update_task` | write | Changes the fields passed; completes or reopens |
+| `cookie_delete_task` | write | Deletes a task and its sub-tasks |
+| `cookie_create_project` | write | Creates a project, optionally under a parent |
+| `cookie_update_project` | write | Renames, moves, describes or favourites a project |
+| `cookie_delete_project` | write | Deletes a project with its sub-projects and tasks |
+
+An agent cannot add a comment (the route takes multipart form data, which the internal entrypoint does not carry), create or edit task labels and saved filters, or reorder tasks.
 
 ### Connect a client
 
