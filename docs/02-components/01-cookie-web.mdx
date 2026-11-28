@@ -37,6 +37,14 @@ Cookie-Web is Cookie's browser client and the owner of the [shared Supabase sche
 
 </FileTree>
 
+## Draft retention
+
+A draft that is not starred is deleted 30 days after its last edit. The deletion is permanent: there is no Trash for drafts to be restored from.
+
+Each saved draft on the Drafts page has a star at the start of its row, and a line above the list states the rule. A starred draft is kept until it is sent or discarded. Starring does not count as an edit, so it does not reorder the list. Removing a star starts the 30 days again, so an old draft is never deleted the moment it loses its star. Drafts that already existed when the rule arrived have 30 days from the day it was applied.
+
+The 30 days are fixed; there is no setting for them. Recoverable local drafts, which live only in the browser, cannot be starred and are not deleted by this rule. The star is offered in Cookie-Web only.
+
 ## Frontend routes
 
 Every route requires Auth0 authentication, enforced by both the `App.vue` render gate and `router.beforeEach`.

@@ -322,6 +322,16 @@ Both lines are passed to Resend as `cc` and `bcc`, kept in the delivery ledger w
 
 The four columns come from migration `0114`. Both Workers read them through `to_jsonb(row) ->> 'cc_addresses'`, which answers `NULL` for a column that does not exist yet, and write them with a statement of their own that runs only when a line is used or has changed. A Worker deployed before the migration therefore behaves as it did; only a draft or a Send Later that has a Cc or Bcc line fails, visibly, until the migration is applied.
 
+## Draft retention
+
+`mail-app-ingest`'s 15-minute cron deletes drafts that are not starred and are more than 30 days past the later of `drafts.updated_at` and `drafts.retention_from`, at most 500 per tick. It is the same delete as `DELETE /drafts/:id`, so the draft's attachment rows go with it. The statement repeats its conditions on the row it deletes, so a star or a save that commits while it waits for that row keeps the draft. A tick that deletes anything logs `drafts_purged` with `deleted`; a failure logs `draft_purge_failed` and is reported to Sentry without stopping the other sweeps.
+
+`PUT /drafts/:id/star` on `cookie-web-drafts` takes `{ "starred": true }` or `false` and answers `{ "draft": { "id", "isStarred" } }`, `400` for any other body and `404` for a draft the caller does not own. The list and single-draft reads return `isStarred`. The route leaves `updated_at` alone, so a star never conflicts with a composer's next autosave, and removing a star sets `retention_from` to the current time.
+
+A composer still holding a draft that the sweep has deleted gets `404` on its next save, and Cookie-Web then saves the message as a new draft.
+
+Both columns come from migration `0119`, which sets `retention_from` on existing drafts to the time it runs.
+
 ## Calendar invitations
 
 Two Workers handle an invitation received by email. `cookie-web-messages` records what each mail says about the event when it is read; `cookie-web-send` answers the organiser. Both keep the event's calendar entries in step through `shared/calendarInvitation.js`. The tables are in the [data model](/data-model) (migration `0113`).

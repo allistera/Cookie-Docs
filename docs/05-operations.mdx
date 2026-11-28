@@ -114,6 +114,12 @@ The Email attachments folder in Documents needs no migration and no new secret. 
 
 To check it after the rollout, open Documents, open **Email attachments**, and confirm that a recent file is listed under the current month, that **Sent** shows only files sent from Cookie, and that a file downloads.
 
+### Draft retention
+
+Roll out in this order: apply migration `0119` (merging to Cookie-Worker's `main` runs it), deploy `cookie-web-drafts` and `mail-app-ingest`, then let Vercel publish the client with the star. Both Workers name the new columns, so neither goes out before the migration. If the client is published before `cookie-web-drafts` is deployed, pressing a star fails with a message and nothing else is affected.
+
+Nothing is deleted at rollout: every existing draft counts its 30 days from the moment the migration ran. The first deletions, which cannot be undone, happen 30 days later. To check the rollout, star a draft, reload the Drafts page and confirm the star remains.
+
 ### September review fixes
 
 Deploy `cookie-web-send` with follow-up support **before** the Cookie-Web compatibility adapter. Apply migration `0065_task_subtree_projects.sql` to repair children left in old projects and index parent lookups. The updated tasks Worker moves each complete subtree in a transaction and serializes structural changes per owner. Deploy it promptly with the repair so older handlers cannot recreate the inconsistency.
