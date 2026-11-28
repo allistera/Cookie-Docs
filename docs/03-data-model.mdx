@@ -53,6 +53,7 @@ The script creates `schema_migrations` if needed and safely skips files already 
 | Done timestamp | `0092` | `messages.archived_at`, stamped by a trigger when mail is marked done and cleared when it returns to the inbox; lets AI Today's email triage include mail done in the last 24 hours |
 | Indexing/perf | `0034`, `0035`, `0043`, `0045` | Query and join index cleanups |
 | Database health | `0112` | `db_query_stats`: the previous reading of `pg_stat_statements`, one row per statement with its call count and total execution time, which `mail-app-ingest` compares against every 15 minutes to find statements that have slowed down. Counters only, never query text. The same migration makes Postgres log statements that take a second or longer, with their plan and without their parameter values |
+| Draft retention | `0119` | `drafts.is_starred` keeps a draft; `drafts.retention_from` is the earliest time its 30-day deletion may count from besides `updated_at`: when the migration ran, or when a star was removed |
 
 :::note
 This table groups migrations by feature area for orientation. For exact column definitions, read the numbered `.sql` files in Cookie-Worker's `migrations/` — they're the only authoritative source.
