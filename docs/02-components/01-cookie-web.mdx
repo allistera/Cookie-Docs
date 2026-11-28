@@ -24,7 +24,7 @@ Cookie-Web is Cookie's browser client and the owner of the [shared Supabase sche
 <FileTree>
 
 - src/ — Vue application
-  - views/ — AI Today, Email, Calendar, Scheduled, Documents, Search, Tasks, Settings
+  - views/ — AI Today, Email, Calendar, Scheduled, Documents, Search, Tasks, Automations, Settings
   - components/ — editors, task panel/sidebar, composer, command palette, and mail UI
   - composables/ — calendars, realtime inbox, badges, and commands
   - stores/ — mail, documents, projects, tasks, and federated search state
@@ -59,6 +59,7 @@ Every route requires Auth0 authentication, enforced by both the `App.vue` render
 | `/documents/file/:fileId` | `DocumentsView` | Inline preview of an uploaded image or PDF, with download |
 | `/search` | `SearchResultsView` | Unified mail, documents, and tasks results; saved mail views use mail-only keyword search |
 | `/tasks` | `TasksView` | Today/Inbox/project task lists, nested projects, detail panel, and subtasks |
+| `/automations/:section?` | `AutomationsView` | Automations: Dashboard, Connections, Templates, Chat, and Create Automation, each an empty page for now |
 | `/settings/:section?` | `SettingsView` | Account, labels/rules, personalisation, calendars, and integration settings |
 
 ## API ownership
@@ -383,6 +384,22 @@ The title names the day ("Tasks · Fri 27 Nov"). Under it are two sections, each
 A row's circle takes the task's priority colour, as in the Tasks view, and its labels follow as chips. Clicking the circle completes the task: the row leaves at once and comes back with a message if the tasks worker refuses. A repeating task moves on to its next date instead. Clicking the title opens the task in Tasks (`/tasks?project=today&task=<id>` or `project=inbox`). **Add task** under Today creates an Inbox task due today; under Inbox it creates one on Someday, as the Tasks view does. Enter or leaving the field saves, Escape drops the draft. An empty section says "Nothing due today." or "Your inbox is clear." **Open Tasks** at the foot goes to the Tasks app. Sub-tasks and dividers are left to the Tasks view, and renaming, dating, moving or deleting a task is done there.
 
 The sidebar is `src/components/TasksRail.vue`, loaded as its own chunk, with its open state in `src/composables/useTasksRail.js` (localStorage `cookie.tasksRail.open`; the folded sections are `cookie.tasksRail.folded`) and its date wording in `src/lib/tasksRail.js`. It reads the first page of each list itself, `GET /task-items?project=today&date=<today>&view=page` and `GET /task-items?project=inbox&view=page`, so the list the Tasks view has loaded is not disturbed; a list longer than a page shows its count with a plus sign. Both are read again after any task is added, changed or deleted on the page, every five minutes, on coming back to the tab, and when the day changes. If one request fails that section says "Tasks could not be loaded." and the other still shows. No worker route was added.
+
+## Automations
+
+Automations is the fifth Cookie app, opened from the app switcher in the header or with **Go to Automations** in the command palette. Its sidebar starts with a **Create Automation** button, in the place Compose has in Email and Add Task has in Tasks, followed by **Dashboard**, **Connections**, **Templates** and **Chat**.
+
+The app is a shell for now: each item opens a page that shows its title and nothing else, and nothing is stored or sent to a Worker.
+
+| Sidebar item | Path |
+| --- | --- |
+| Create Automation | `/automations/new` |
+| Dashboard | `/automations` |
+| Connections | `/automations/connections` |
+| Templates | `/automations/templates` |
+| Chat | `/automations/chat` |
+
+Any other path under `/automations` shows Dashboard. The sidebar can be resized like the others; the calendar and tasks sidebars on the right are not offered here. The pages are listed in `src/lib/automations.js`, which `AutomationsSidebar.vue` and `AutomationsView.vue` both read.
 
 ## Calendar invitations
 
