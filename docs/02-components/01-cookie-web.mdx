@@ -59,7 +59,7 @@ Every route requires Auth0 authentication, enforced by both the `App.vue` render
 | `/documents/file/:fileId` | `DocumentsView` | Inline preview of an uploaded image or PDF, with download |
 | `/search` | `SearchResultsView` | Unified mail, documents, and tasks results; saved mail views use mail-only keyword search |
 | `/tasks` | `TasksView` | Today/Inbox/project task lists, nested projects, detail panel, and subtasks |
-| `/automations/:section?` | `AutomationsView` | Automations: Cookie Assistant as a full-page chat, plus Dashboard, Connections, Templates, and Create Automation, each an empty page for now |
+| `/automations/:section?` | `AutomationsView` | Automations: Cookie Assistant as a full-page chat, a Connections guide for MCP clients, plus Dashboard, Templates, and Create Automation, each an empty page for now |
 | `/settings/:section?` | `SettingsView` | Account, labels/rules, personalisation, calendars, and integration settings |
 
 ## API ownership
@@ -389,7 +389,7 @@ The sidebar is `src/components/TasksRail.vue`, loaded as its own chunk, with its
 
 Automations is the fifth Cookie app, opened from the app switcher in the header or with **Go to Automations** in the command palette. Its sidebar starts with a **Create Automation** button, in the place Compose has in Email and Add Task has in Tasks, followed by **Dashboard**, **Connections**, **Templates** and **Chat**.
 
-Apart from Chat, the app is a shell for now: each item opens a page that shows its title and nothing else, and nothing is stored or sent to a Worker.
+Apart from Connections and Chat, the app is a shell for now: each other item opens a page that shows its title and nothing else, and nothing is stored or sent to a Worker.
 
 | Sidebar item | Path |
 | --- | --- |
@@ -400,6 +400,18 @@ Apart from Chat, the app is a shell for now: each item opens a page that shows i
 | Chat | `/automations/chat` |
 
 Any other path under `/automations` shows Dashboard. The sidebar can be resized like the others; the calendar and tasks sidebars on the right are not offered here. The pages are listed in `src/lib/automations.js`, which `AutomationsSidebar.vue` and `AutomationsView.vue` both read.
+
+### Connections
+
+**Connections** is a setup guide for connecting an AI client to the [Cookie MCP server](/components/cookie-worker#cookie-mcp-server). It opens with the server URL and the public OAuth client ID, then gives the steps for each client:
+
+- **Claude Code**: the `claude mcp add` command, then `/mcp`, **Authenticate**, and `claude mcp list` to confirm.
+- **Claude desktop app and claude.ai**: adding a custom connector under Settings, Connectors, with the client ID under Advanced settings. There is no command for these.
+- **Codex**: the `mcp_oauth_callback_port` line for `~/.codex/config.toml`, `codex mcp add`, `codex mcp login cookie`, and `codex mcp list` to confirm.
+
+Each command sits in its own block with a **Copy** button, which reads **Copied** for two seconds. The page ends with how to check a connection (ask the assistant to list your Cookie labels) and what to look at if sign-in fails, and links to Settings, MCP clients, where send confirmations are created.
+
+Settings, MCP clients shows the same commands. Both pages read them from `src/lib/mcpClients.js`, which must stay aligned with the Cookie-Worker README's "Connect a client" section. The page is `AutomationsConnections.vue`, loaded by `AutomationsView.vue`; it calls no API.
 
 ### Chat
 
